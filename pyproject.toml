@@ -1,7 +1,7 @@
 [project]
 name = "niyam"
 version = "0.1.0"
-description = "Add your description here"
+description = "Grounded question answering over RBI and SEBI regulations"
 readme = "README.md"
 authors = [
     { name = "Musharraf-Bubere", email = "musharrafbubere007@gmail.com" }
