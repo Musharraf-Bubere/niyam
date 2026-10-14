@@ -142,6 +142,48 @@ How to use this file: read the plain meaning, look at the Niyam example, then pr
 
 ---
 
+## 11. Secrets management
+
+**Plain meaning:** Passwords and API keys are kept out of the code and out of git. They live in a place only the running app can read.
+
+**Niyam example:** The real Gemini key sits in a local `.env` file that git ignores. A committed `.env.example` shows which variables exist but holds fake values. In code the key is a `SecretStr`, so printing the settings shows `**********` instead of the key. To read it you must deliberately call `.get_secret_value()`.
+
+**Why it matters:** Keys pushed to a public repository get found by automated scanners, often within minutes. Deleting the file later does not help, because the key stays in git history. A leaked key must be revoked and replaced.
+
+**Likely questions**
+- *Where do you keep API keys?* In environment variables loaded from an ignored `.env` locally, and from a secret manager in production. Never in code or git.
+- *What if a key is committed by mistake?* Revoke it immediately and create a new one. Then remove it from history if needed. Treat it as compromised either way.
+- *How do you stop secrets leaking into logs?* Secrets are wrapped in `SecretStr`, which hides their value when printed or logged.
+
+---
+
+## 12. Verify before you trust
+
+**Plain meaning:** Check that a safety measure works before relying on it, and check facts against the source instead of from memory.
+
+**Niyam example:** Before putting a real key into `.env`, I ran `git check-ignore -v .env` to prove git would ignore it. For model names, I read Google's current model page, because LangChain's own docs example used a model name that was not on Google's list.
+
+**Why it matters:** Safety rules that were never tested are only assumptions. Documentation, tutorials and AI assistants can all be out of date.
+
+**Likely questions**
+- *How do you keep up with fast-changing LLM APIs?* I keep model names in configuration, read the provider's official model page, and confirm with a real call.
+- *How do you know your safeguards work?* I test them directly, for example by checking that the ignore rule matches before the secret exists.
+
+---
+
+## 13. Configuration over code (model independence)
+
+**Plain meaning:** Anything likely to change, such as which model to use, lives in settings and not in the source code. Changing it means editing one line in `.env`, not editing and redeploying code.
+
+**Niyam example:** `NIYAM_LLM_MODEL` and `NIYAM_EMBEDDING_MODEL` choose the models. No model name appears anywhere in the Python code. When Google retires a model, the fix is one environment variable.
+
+**Why it matters:** Models are retired, renamed and repriced often. Google has already shut down older Gemini models. Hard-coded names turn each of those events into a code change and a release.
+
+**Likely questions**
+- *How would you switch from Gemini to another provider?* Change the provider and model settings and install that provider's LangChain package. Then run the evaluation suite to confirm quality did not regress.
+- *What is the catch?* Embedding models are special. A new embedding model produces vectors that are incompatible with the old ones, so the index must be rebuilt, and the app checks the stored model name against the configured one.
+- *Why not set a default model in code?* A default is a hidden model name. Leaving it empty forces an explicit choice, and the model factory fails with a clear message if it is missing.
+
 ## Coming next (to be added as we build)
 
 Continuous integration, pre-commit hooks, containerisation, database migrations, background jobs, evaluation-driven development, security and guardrails, observability, and deployment.

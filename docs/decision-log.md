@@ -95,6 +95,15 @@ Format of each entry: context, options considered, decision, trade-off.
 - **Why:** Async-native, small, and a good match for an async application. FastAPI background tasks die with the process, and Celery is heavier than a single worker needs.
 - **Trade-off:** A smaller ecosystem than Celery.
 
+## D-013: No default model names in code; API key as a secret value
+
+- **Date:** 2026-10-14. **Status:** accepted. Refines D-003.
+- **Context:** Provider docs and model names change often. LangChain's documentation example used a Gemini model name that did not appear on Google's current model list.
+- **Options:** (a) default model names in code, (b) default model names in the settings class, (c) no defaults, names supplied through configuration.
+- **Decision:** (c). Provider, model and embedding model settings are optional in the settings class and empty by default. The model factory stops with a clear message if a model name is missing. The API key is a `SecretStr` and is read from a git-ignored `.env`. A `.env.example` with fake values is committed as the template.
+- **Why:** A default is a hidden hard-coded model name, which brings back the problem D-003 set out to avoid. Treating the key as a secret value keeps it out of logs.
+- **Trade-off:** A missing model name is found when the model is first requested, not at application startup. We will add a startup check when the API is built.
+
 ---
 
 ## Open decisions
