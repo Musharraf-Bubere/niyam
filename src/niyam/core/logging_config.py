@@ -7,7 +7,7 @@ from structlog.typing import Processor
 def configure_logging(level: str = "INFO", json_logs: bool = False) -> None:
     """Configure structured logging for the whole application.
 
-    Local developement gets readable, coloured output. Production gets one JSON
+    Local development gets readable, coloured output. Production gets one JSON
     object per line, which log tools can parse and filter by field.
     """
     renderer: Processor = (
