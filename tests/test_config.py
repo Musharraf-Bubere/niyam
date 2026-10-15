@@ -32,6 +32,14 @@ def test_invalid_log_level_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
         Settings()
 
 
+def test_model_settings_are_empty_by_default() -> None:
+    settings = Settings()
+    assert settings.llm_provider == "google_genai"
+    assert settings.llm_model is None
+    assert settings.embedding_model is None
+    assert settings.google_api_key is None
+    
+
 def test_model_can_be_changed_by_environment_only(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("NIYAM_LLM_MODEL", "any-model-name")
     assert Settings().llm_model == "any-model-name"
