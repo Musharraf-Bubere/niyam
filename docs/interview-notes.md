@@ -227,6 +227,48 @@ How to use this file: read the plain meaning, look at the Niyam example, then pr
 
 ---
 
+## 18. Architecture documentation: views and diagrams as code
+
+**Plain meaning:** Describe the system from several angles instead of one big picture: the whole system and its neighbours, the deployable pieces, the code structure, and the flow of one important request. The diagrams are written as text (Mermaid) inside the repository, so they are versioned and reviewed like code.
+
+**Niyam example:** `docs/02-architecture.md` has a system diagram, a question-answering sequence, the orchestration graph, an ingestion flow and a data model, plus a status table showing what is built and what is only planned.
+
+**Why it matters:** A diagram stored as an image gets out of date. Text diagrams live next to the code and are updated in the same change.
+
+**Likely questions**
+- *How do you document architecture?* A short document with context, container, flow and data views, kept in the repository and updated each phase.
+- *How do you keep it from going stale?* It has a status table, and changes to the design update the document in the same pull request.
+
+---
+
+## 19. Layering and dependency direction
+
+**Plain meaning:** Code is arranged in layers, and a layer may only use the layers below it. The API can use the orchestrator, but the database layer can never reach back up into the API.
+
+**Niyam example:** `api -> agents -> retrieval, llm, guardrails -> db -> core`. Only `llm`, `retrieval` and `agents` import LangChain, and only `db` talks to Postgres.
+
+**Why it matters:** Without a direction, every module ends up depending on every other one, and a small change breaks things far away. Layers make the code easier to test, to replace and to explain.
+
+**Likely questions**
+- *How do you keep boundaries from eroding?* By writing the rules down, then enforcing them automatically with a check in CI.
+- *Why not microservices?* One team and one deployable do not need network boundaries. A modular monolith has clear module boundaries without the operational cost, and can be split later.
+
+---
+
+## 20. Designing for failure
+
+**Plain meaning:** For each dependency, decide ahead of time what the system does when it breaks, instead of finding out in production.
+
+**Niyam example:** Section 11 of the architecture lists each failure and its behaviour. When Gemini rate-limits us we retry, then fall back to a second model, then return a clear error. When evidence is weak we refuse, and never guess.
+
+**Why it matters:** Every external service fails sometimes. A system with planned fallbacks degrades gracefully, and one without them simply breaks.
+
+**Likely questions**
+- *What happens if the LLM provider is down?* Retries with backoff, then a configured fallback model, then a clear error. Health checks show the state.
+- *What is graceful degradation?* Continuing to do the most important part of the job when a secondary part fails, for example skipping the cache when Redis is down.
+
+---
+
 ## Coming next (to be added as we build)
 
 Continuous integration, pre-commit hooks, containerisation, database migrations, background jobs, evaluation-driven development, security and guardrails, observability, and deployment.
