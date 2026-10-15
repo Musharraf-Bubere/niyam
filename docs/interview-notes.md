@@ -269,6 +269,25 @@ How to use this file: read the plain meaning, look at the Niyam example, then pr
 
 ---
 
+## 21. Model factory (step 1.14)
+
+**Q: How would you swap LLM providers?**
+A: A single factory builds the chat model from configuration (provider and model name). The rest of the app depends only on LangChain's `BaseChatModel` interface. Swapping is an environment change and no code change.
+
+**Q: How do you test LLM code?**
+A: Unit tests use a fake model, so they're fast, free and need no key. A small separate set of real-API smoke tests proves the integration.
+
+**Q: How do you keep a strictly typed codebase when a library is untyped?**
+A: Annotate the value at the boundary (`model: BaseChatModel = init_chat_model(...)`), so type-checking applies everywhere past that point.
+
+**Q: What makes a good commit?**
+A: One logical change, a clear message, and it passes the quality gates by itself. Unrelated fixes get their own commit.
+
+**Q: What did your wrong-model experiment show?**
+A: The error appears at call time, not build time. So production needs a startup check, which makes config mistakes fail at boot.
+
+---
+
 ## Coming next (to be added as we build)
 
 Continuous integration, pre-commit hooks, containerisation, database migrations, background jobs, evaluation-driven development, security and guardrails, observability, and deployment.

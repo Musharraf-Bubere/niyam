@@ -104,6 +104,13 @@ Format of each entry: context, options considered, decision, trade-off.
 - **Why:** A default is a hidden hard-coded model name, which brings back the problem D-003 set out to avoid. Treating the key as a secret value keeps it out of logs.
 - **Trade-off:** A missing model name is found when the model is first requested, not at application startup. We will add a startup check when the API is built.
 
+## D-014: Thin model factory over LangChain (supersedes LiteLLM)
+
+**Context.** The model must be changeable by configuration only, and we already use LangChain.
+**Decision.** One function, `build_chat_model(settings)`, wraps `init_chat_model`. Model name and provider come from `Settings`. Only `niyam.llm` builds models or reads the API key.
+**Why.** LangChain already abstracts providers, so a second abstraction layer (LiteLLM) would duplicate it. A thin factory keeps one seam and no extra dependency.
+**Consequences.** Swapping a model is an environment change. A wrong model name fails on first call, not at build time, so a startup check will be added later.
+
 ---
 
 ## Open decisions
