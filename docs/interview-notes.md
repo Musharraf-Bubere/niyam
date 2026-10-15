@@ -288,6 +288,22 @@ A: The error appears at call time, not build time. So production needs a startup
 
 ---
 
+## 22. Continuous integration (step 1.16)
+
+**Q: What does your CI do?**
+A: On every push and pull request it installs exact locked dependencies on a clean pinned Linux runner, then runs lint, format check, strict type check and tests. No secrets are needed because unit tests use a fake model.
+
+**Q: Why `uv sync --locked`?**
+A: It fails if the lockfile and `pyproject.toml` disagree, so dependency changes can't slip in unrecorded.
+
+**Q: Why pin the runner and action versions?**
+A: Reproducibility. `latest` can change under you. I pin and upgrade deliberately. A real example: I pinned `ubuntu-24.04` ahead of the `ubuntu-latest` migration, and I found that one action publishes no floating major tag, so it needs an exact version.
+
+**Q: How do you handle deprecation warnings?**
+A: Read the vendor timeline, check whether the date has passed, and upgrade on my own schedule instead of waiting for a break.
+
+---
+
 ## Coming next (to be added as we build)
 
 Continuous integration, pre-commit hooks, containerisation, database migrations, background jobs, evaluation-driven development, security and guardrails, observability, and deployment.
