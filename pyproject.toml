@@ -8,6 +8,8 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "langchain>=1.4.6",
+    "langchain-google-genai>=4.4.2",
     "pydantic-settings>=2.15.0",
     "structlog>=26.1.0",
 ]
