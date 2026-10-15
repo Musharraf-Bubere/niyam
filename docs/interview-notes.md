@@ -13,6 +13,7 @@ How to use this file: read the plain meaning, look at the Niyam example, then pr
 **Why it matters:** Small commits are easy to review, easy to undo, and make the history readable. If something breaks, you can find the commit that caused it.
 
 **Likely questions**
+
 - *Why commit often?* Because each commit is a safe checkpoint. If a change goes wrong I can go back one step instead of losing a day of work.
 - *Why labels in commit messages?* They make history scannable, and tools can generate release notes from them.
 
@@ -27,6 +28,7 @@ How to use this file: read the plain meaning, look at the Niyam example, then pr
 **Why it matters:** Without a lockfile, a library can update overnight and break the app on one machine only. That is the "it works on my machine" problem.
 
 **Likely questions**
+
 - *What is a lockfile?* A file that pins the exact versions of all dependencies, including indirect ones.
 - *Why separate dev dependencies?* Tools like ruff, mypy and pytest are needed to develop but not to run the app. Keeping them out of production makes the image smaller and reduces the attack surface.
 
@@ -41,6 +43,7 @@ How to use this file: read the plain meaning, look at the Niyam example, then pr
 **Why it matters:** Humans forget. Automatic gates do not. The same checks run locally and in CI, so there are no surprises.
 
 **Likely questions**
+
 - *What does your CI check?* Formatting and lint, strict type checking, unit tests, and later the retrieval and answer-quality evaluations.
 - *What is a quality gate?* A check that must pass before code can move forward. If it fails, the change is blocked.
 
@@ -55,6 +58,7 @@ How to use this file: read the plain meaning, look at the Niyam example, then pr
 **Why it matters:** The cost of fixing a bug rises the later it is found.
 
 **Likely question**
+
 - *Why strict type checking?* It turns a class of runtime errors into errors I see while writing the code.
 
 ---
@@ -68,6 +72,7 @@ How to use this file: read the plain meaning, look at the Niyam example, then pr
 **Why it matters:** Tests that sometimes pass and sometimes fail (flaky tests) make people stop trusting the test suite.
 
 **Likely questions**
+
 - *What causes flaky tests?* Shared state, such as global configuration, files, environment variables, time or the network, and tests that depend on running order.
 - *What is a fixture?* Reusable setup and cleanup code that pytest hands to a test. Code before `yield` is setup, and code after it is cleanup.
 
@@ -82,6 +87,7 @@ How to use this file: read the plain meaning, look at the Niyam example, then pr
 **Why it matters:** Secrets such as API keys never enter the repository. One container image can be promoted from test to production unchanged.
 
 **Likely questions**
+
 - *Where do you keep API keys?* In environment variables or a secret manager, never in code or git.
 - *How do you switch the LLM?* By configuration only, through environment variables read by one settings object and one factory function.
 
@@ -96,6 +102,7 @@ How to use this file: read the plain meaning, look at the Niyam example, then pr
 **Why it matters:** A crash at startup is cheap and obvious. A silent wrong behaviour in production is expensive and hard to find.
 
 **Likely question**
+
 - *How do you validate configuration?* With Pydantic Settings. Types and allowed values are declared once, and invalid values are rejected at startup.
 
 ---
@@ -109,6 +116,7 @@ How to use this file: read the plain meaning, look at the Niyam example, then pr
 **Why it matters:** When something breaks, you can ask the logs precise questions, for example "show all errors for request abc123".
 
 **Likely questions**
+
 - *What is structured logging?* Logging events as key-value data, usually JSON, so machines can parse them.
 - *Why UTC timestamps?* They stay consistent across servers and time zones.
 - *What is a request ID for?* It ties all log lines from one request together, so you can follow it end to end.
@@ -124,6 +132,7 @@ How to use this file: read the plain meaning, look at the Niyam example, then pr
 **Why it matters:** In six months nobody, including me, remembers why something was chosen. It also shows that decisions were deliberate.
 
 **Likely questions**
+
 - *Tell me about a decision you changed.* I started with Langfuse for tracing, then switched to LangSmith because it integrates natively with LangChain and LangGraph. I recorded the change and kept the old entry marked as superseded.
 - *How do you make technical decisions?* I list the options, name the trade-offs, choose one for stated reasons, and write it down so it can be revisited.
 
@@ -138,6 +147,7 @@ How to use this file: read the plain meaning, look at the Niyam example, then pr
 **Why it matters:** It stops scope creep, and it gives every later decision something to be checked against.
 
 **Likely question**
+
 - *How did you decide what "good" means for your system?* I set measurable targets first, built an evaluation set, measured a baseline, and then reported real numbers.
 
 ---
@@ -151,6 +161,7 @@ How to use this file: read the plain meaning, look at the Niyam example, then pr
 **Why it matters:** Keys pushed to a public repository get found by automated scanners, often within minutes. Deleting the file later does not help, because the key stays in git history. A leaked key must be revoked and replaced.
 
 **Likely questions**
+
 - *Where do you keep API keys?* In environment variables loaded from an ignored `.env` locally, and from a secret manager in production. Never in code or git.
 - *What if a key is committed by mistake?* Revoke it immediately and create a new one. Then remove it from history if needed. Treat it as compromised either way.
 - *How do you stop secrets leaking into logs?* Secrets are wrapped in `SecretStr`, which hides their value when printed or logged.
@@ -166,6 +177,7 @@ How to use this file: read the plain meaning, look at the Niyam example, then pr
 **Why it matters:** Safety rules that were never tested are only assumptions. Documentation, tutorials and AI assistants can all be out of date.
 
 **Likely questions**
+
 - *How do you keep up with fast-changing LLM APIs?* I keep model names in configuration, read the provider's official model page, and confirm with a real call.
 - *How do you know your safeguards work?* I test them directly, for example by checking that the ignore rule matches before the secret exists.
 
@@ -180,9 +192,40 @@ How to use this file: read the plain meaning, look at the Niyam example, then pr
 **Why it matters:** Models are retired, renamed and repriced often. Google has already shut down older Gemini models. Hard-coded names turn each of those events into a code change and a release.
 
 **Likely questions**
+
 - *How would you switch from Gemini to another provider?* Change the provider and model settings and install that provider's LangChain package. Then run the evaluation suite to confirm quality did not regress.
 - *What is the catch?* Embedding models are special. A new embedding model produces vectors that are incompatible with the old ones, so the index must be rebuilt, and the app checks the stored model name against the configured one.
 - *Why not set a default model in code?* A default is a hidden model name. Leaving it empty forces an explicit choice, and the model factory fails with a clear message if it is missing.
+
+---
+
+## 14. Security regression tests
+
+**Plain meaning:** A test that locks in a safety property, so a later change cannot quietly break it.
+
+**Niyam example:** One test sets a fake API key and checks the secret never appears in `repr` or `str` of the settings object. If someone changes the key's type to a plain string, that test fails immediately.
+
+**Why it matters:** Security properties break silently. Nothing crashes when a secret starts appearing in logs, so only a test will notice.
+
+**Likely questions**
+- *How do you make sure secrets don't leak into logs?* The key is a `SecretStr`, and a test checks that the value does not appear when settings are printed.
+- *What is a regression test?* A test added to make sure a past or possible mistake does not come back.
+
+---
+
+## 15. Commit hygiene: inspect before you commit
+
+**Plain meaning:** Look at exactly what is staged before committing, and make sure the message describes it.
+
+**Niyam example:** I ran `git status` and `git diff --staged` before committing. Once a commit message was re-used by accident and described the wrong change. Since it was already pushed, I left it alone and corrected the habit instead of rewriting shared history.
+
+**Why it matters:** A clear history is only useful if each message is true. Staging only what you intend also keeps secrets, such as a `.env` file, out of commits.
+
+**Likely questions**
+- *How do you avoid committing secrets?* A `.gitignore` rule, an explicit `git add` of named files, and checking `git status` and `git diff --staged` before each commit.
+- *When would you rewrite git history?* Only on my own unpushed or private branches. Rewriting shared history with a force-push can break other people's work.
+
+---
 
 ## Coming next (to be added as we build)
 
