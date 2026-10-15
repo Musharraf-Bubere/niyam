@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Any
 
 import pytest
@@ -8,6 +9,26 @@ from niyam.core.config import Settings
 from niyam.llm.factory import ModelNotConfiguredError, build_chat_model
 
 
+@dataclass
+class InitSpy:
+    """Records how the factory called LangChain, and hands back a fake model."""
+
+    model: FakeListChatModel
+    calls: list[tuple[tuple[Any, ...], dict[str, Any]]]
+
+
+@pytest.fixture
+def init_spy(monkeypatch: pytest.MonkeyPatch) -> InitSpy:
+    spy = InitSpy(model=FakeListChatModel(responses=["hi"]), calls=[])
+
+    def fake_init_chat_model(*args: Any, **kwargs: Any) -> FakeListChatModel:
+        spy.calls.append((args, kwargs))
+        return spy.model
+
+    monkeypatch.setattr("niyam.llm.factory.init_chat_model", fake_init_chat_model)
+    return spy
+
+
 def test_missing_model_name_raises_clear_error() -> None:
     settings = Settings(llm_model=None)
 
@@ -15,17 +36,7 @@ def test_missing_model_name_raises_clear_error() -> None:
         build_chat_model(settings)
 
 
-def test_factory_passes_model_provider_and_key_to_langchain(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
-    fake_model = FakeListChatModel(responses=["hi"])
-
-    def fake_init_chat_model(*args: Any, **kwargs: Any) -> FakeListChatModel:
-        calls.append((args, kwargs))
-        return fake_model
-
-    monkeypatch.setattr("niyam.llm.factory.init_chat_model", fake_init_chat_model)
+def test_factory_passes_model_provider_and_key_to_langchain(init_spy: InitSpy) -> None:
     settings = Settings(
         llm_model="test-model",
         llm_provider="google_genai",
@@ -34,24 +45,15 @@ def test_factory_passes_model_provider_and_key_to_langchain(
 
     result = build_chat_model(settings)
 
-    assert result is fake_model
-    assert calls == [
+    assert result is init_spy.model
+    assert init_spy.calls == [
         (("test-model",), {"model_provider": "google_genai", "api_key": "secret-value"})
     ]
 
 
-def test_factory_omits_api_key_when_none_is_configured(
-        monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
-
-    def fake_init_chat_model(*args: Any, **kwargs: Any) -> FakeListChatModel:
-        calls.append((args, kwargs))
-        return FakeListChatModel(responses=["hi"])
-
-    monkeypatch.setattr("niyam.llm.factory.init_chat_model", fake_init_chat_model)
+def test_factory_omits_api_key_when_none_is_configured(init_spy: InitSpy) -> None:
     settings = Settings(llm_model="test-model", google_api_key=None)
 
     build_chat_model(settings)
 
-    assert "api_key" not in calls[0][1]
+    assert "api_key" not in init_spy.calls[0][1]
