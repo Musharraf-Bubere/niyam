@@ -18,3 +18,22 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run mypy src tests
       - run: uv run pytest
+
+
+  docker:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build image
+        run: docker build -t niyam:ci .
+      - name: Smoke test the container
+        run: |
+          docker run -d --name niyam -p 8000:8000 niyam:ci
+          for i in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:8000/health; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs niyam
+          exit 1
