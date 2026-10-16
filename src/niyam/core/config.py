@@ -16,8 +16,15 @@ class Settings(BaseSettings):
     app_name: str = "niyam"
     environment: Literal["local", "test", "production"] = "local"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+
     llm_provider: str = "google_genai"
     llm_model: str | None = None
     embedding_provider: str = "google_genai"
     embedding_model: str | None = None
     google_api_key: SecretStr | None = None
+
+    db_host: str = "localhost"
+    db_port: int = 5432
+    db_user: str = "niyam"
+    db_name: str = "niyam"
+    db_password: SecretStr | None = None

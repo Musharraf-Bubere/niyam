@@ -7,6 +7,12 @@ from pydantic import ValidationError
 from niyam.core.config import Settings
 
 
+@pytest.fixture
+def no_env_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Run from an empty folder so the real .env file is never read."""
+    monkeypatch.chdir(tmp_path)
+
+
 @pytest.fixture(autouse=True)
 def isolated_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.chdir(tmp_path)
@@ -52,3 +58,26 @@ def test_api_key_is_hidden_when_printed(monkeypatch: pytest.MonkeyPatch) -> None
     assert "super-secret-value" not in str(settings)
     assert settings.google_api_key is not None
     assert settings.google_api_key.get_secret_value() == "super-secret-value"
+
+
+def test_db_settings_read_from_environment(
+    monkeypatch: pytest.MonkeyPatch, no_env_file: None
+) -> None:
+    monkeypatch.setenv("NIYAM_DB_PORT", "5433")
+    monkeypatch.setenv("NIYAM_DB_PASSWORD", "s3cret")
+
+    settings = Settings()
+
+    assert settings.db_port == 5433
+    assert settings.db_password is not None
+    assert settings.db_password.get_secret_value() == "s3cret"
+
+
+def test_db_password_is_hidden_when_printed(
+    monkeypatch: pytest.MonkeyPatch, no_env_file: None
+) -> None:
+    monkeypatch.setenv("NIYAM_DB_PASSWORD", "s3cret")
+
+    settings = Settings()
+
+    assert "s3cret" not in repr(settings)
