@@ -47,6 +47,11 @@ git clone https://github.com/Musharraf-Bubere/niyam.git
 cd niyam
 uv sync
 ```
+Install the Git hooks once, so checks run automatically before each commit and push:
+
+```bash
+uv run pre-commit install --hook-type pre-commit --hook-type pre-push
+```
 
 Create your local settings file from the example and add your own values. The real `.env` is git-ignored and must never be committed.
 
