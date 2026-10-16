@@ -7,12 +7,6 @@ from pydantic import ValidationError
 from niyam.core.config import Settings
 
 
-@pytest.fixture
-def no_env_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Run from an empty folder so the real .env file is never read."""
-    monkeypatch.chdir(tmp_path)
-
-
 @pytest.fixture(autouse=True)
 def isolated_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.chdir(tmp_path)
