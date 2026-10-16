@@ -345,6 +345,22 @@ A: Multi-stage build, drop build-only tools, or a distroless base. I chose singl
 
 ---
 
+## Database in Docker Compose
+
+**Q: Why Postgres with pgvector instead of a dedicated vector database?**
+Our corpus is regulatory circulars, so thousands to low millions of chunks, not billions. Postgres gives us relational metadata (regulator, circular number, date, status), vectors and full-text search in one place, so hybrid retrieval and metadata filtering happen in one query with real transactions. A separate vector DB would add another system to run, secure and keep in sync. If scale demanded it, the retrieval layer is isolated, so we could swap it.
+
+**Q: A port was already in use. What did you do?**
+I changed only the host side of the port mapping and made it configurable through `.env` (`NIYAM_DB_PORT`). The container port is part of the design and never changes. The same variable feeds the application's connection settings, so Compose and the app can't disagree.
+
+**Q: What happens to the data when the container is removed?**
+Nothing. The data directory is a named volume, which outlives containers. Only `down -v` removes it, so I treat that flag as destructive.
+
+**Q: How do you keep the database secure locally?**
+Credentials live in a git-ignored `.env`, Compose fails fast if they are missing, the port is bound to 127.0.0.1 only, and the image tag is pinned.
+
+---
+
 ## Coming next (to be added as we build)
 
 Continuous integration, pre-commit hooks, containerisation, database migrations, background jobs, evaluation-driven development, security and guardrails, observability, and deployment.

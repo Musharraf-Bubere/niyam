@@ -1,0 +1,19 @@
+services:
+  db:
+    image: pgvector/pgvector:0.8.0-pg16
+    environment:
+      POSTGRES_USER: ${NIYAM_DB_USER:?set NIYAM_DB_USER in .env}
+      POSTGRES_PASSWORD: ${NIYAM_DB_PASSWORD:?set NIYAM_DB_PASSWORD in .env}
+      POSTGRES_DB: ${NIYAM_DB_NAME:?set NIYAM_DB_NAME in .env}
+    ports:
+      - "127.0.0.1:${NIYAM_DB_PORT:-5432}:5432"
+    volumes:
+      - niyam_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  niyam_pgdata:

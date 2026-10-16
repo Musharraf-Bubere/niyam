@@ -125,6 +125,14 @@ Format of each entry: context, options considered, decision, trade-off.
 **Why.** Layer order gives fast rebuilds. `--locked --no-dev` keeps the image reproducible and small. Non-root limits the damage of a compromise. Excluding `.env` means secrets cannot be baked into image layers.
 **Trade-offs.** Single-stage is simpler to read than multi-stage but slightly larger (517 MB unpacked, 117 MB compressed). Revisit if size or start time matters.
 
+## D-017: PostgreSQL 16 + pgvector via Docker Compose
+
+- **Status:** Accepted
+- **Context:** Niyam needs one store for documents, chunks, vectors and full-text search. Developers need an identical database on every machine and in CI.
+- **Decision:** Run `pgvector/pgvector:0.8.0-pg16` through `compose.yaml`. The image tag is pinned to an exact version. Credentials and the host port come from `.env` and fail fast if missing (`${VAR:?msg}`). The port is published on `127.0.0.1` only. Data lives in the named volume `niyam_pgdata`.
+- **Why:** One database for relational data, vectors and keyword search keeps the system simple, and hybrid retrieval can run in a single SQL query. Pinning avoids surprise upgrades. Binding to localhost keeps the database off the network.
+- **Consequences:** The host port is configurable (`NIYAM_DB_PORT`) because 5432 was already taken by a local Postgres on one machine. The container port stays 5432.
+
 ---
 
 ## Open decisions
