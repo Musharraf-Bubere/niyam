@@ -76,6 +76,15 @@ uv run pytest
 
 Unit tests use a fake model, so they need no API key and no network.
 
+## Run with Docker
+
+```bash
+docker build -t niyam:dev .
+docker run -d --name niyam -p 127.0.0.1:8000:8000 niyam:dev
+```
+
+Then open http://127.0.0.1:8000/health. The image contains only the application code and runtime dependencies. Secrets are never baked in; they are passed as environment variables when the container starts.
+
 ## Project layout
 
 ```text

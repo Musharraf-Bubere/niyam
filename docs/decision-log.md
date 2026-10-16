@@ -118,6 +118,13 @@ Format of each entry: context, options considered, decision, trade-off.
 **Why.** Local hooks use the tool versions in `uv.lock`, so hooks, local runs and CI cannot disagree. Splitting by stage keeps commits fast while slow checks still run before code leaves the machine.
 **Consequences.** Hooks live in `.git/hooks`, so each clone must run the install command once. `--no-verify` can skip them, so CI stays the final gate.
 
+## D-016: Single-stage Docker image with uv, non-root user and health check
+
+**Context.** The app must run identically on a laptop, in CI and in the cloud.
+**Decision.** Build from `python:3.12-slim`, copy a pinned uv binary, install locked runtime dependencies in a separate layer before copying code, run as a non-root user, and add a `HEALTHCHECK` on `/health`. `.dockerignore` excludes `.env`, `.git`, `.venv`, tests and docs.
+**Why.** Layer order gives fast rebuilds. `--locked --no-dev` keeps the image reproducible and small. Non-root limits the damage of a compromise. Excluding `.env` means secrets cannot be baked into image layers.
+**Trade-offs.** Single-stage is simpler to read than multi-stage but slightly larger (517 MB unpacked, 117 MB compressed). Revisit if size or start time matters.
+
 ---
 
 ## Open decisions

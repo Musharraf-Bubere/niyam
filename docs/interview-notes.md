@@ -323,6 +323,28 @@ A: Finding problems earlier in the pipeline, where they are cheaper to fix: edit
 
 ---
 
+## Docker (step 1.20)
+
+**Q: How do you handle secrets in Docker?**
+A: Never in the image. `.dockerignore` keeps `.env` out of the build context, and secrets are injected as environment variables at container start. Image layers can be unpacked, so anything baked in is readable.
+
+**Q: Why order the Dockerfile this way?**
+A: Layer caching. Dependencies change rarely, so they are installed before the code is copied. A code change rebuilds in seconds. I saw the difference: first build 42 s, rebuild 1.5 s.
+
+**Q: Why a non-root user?**
+A: Least privilege. If the app is compromised the attacker gets a limited account, not root in the container.
+
+**Q: What is a health check for?**
+A: It lets Docker or the platform tell whether the container is alive and restart it if not. Mine calls `/health`. Liveness only for now; readiness (database reachable) comes with the data layer.
+
+**Q: Why `0.0.0.0` inside the container but `127.0.0.1` on the port mapping?**
+A: Inside, the app must listen on all of the container's interfaces so mapped traffic can reach it. Outside, publishing on `127.0.0.1` keeps it reachable from my machine only.
+
+**Q: How would you shrink the image?**
+A: Multi-stage build, drop build-only tools, or a distroless base. I chose single-stage for clarity and recorded the trade-off in the decision log.
+
+---
+
 ## Coming next (to be added as we build)
 
 Continuous integration, pre-commit hooks, containerisation, database migrations, background jobs, evaluation-driven development, security and guardrails, observability, and deployment.
