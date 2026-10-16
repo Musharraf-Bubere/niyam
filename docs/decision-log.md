@@ -111,6 +111,13 @@ Format of each entry: context, options considered, decision, trade-off.
 **Why.** LangChain already abstracts providers, so a second abstraction layer (LiteLLM) would duplicate it. A thin factory keeps one seam and no extra dependency.
 **Consequences.** Swapping a model is an environment change. A wrong model name fails on first call, not at build time, so a startup check will be added later.
 
+## D-015: Local pre-commit hooks that call project tools through uv
+
+**Context.** A failed format check was committed and pushed, and only CI caught it.
+**Decision.** Use pre-commit with `repo: local` hooks that run `uv run ruff`, `uv run mypy` and `uv run pytest`. Ruff runs at commit time. Mypy and pytest run at push time.
+**Why.** Local hooks use the tool versions in `uv.lock`, so hooks, local runs and CI cannot disagree. Splitting by stage keeps commits fast while slow checks still run before code leaves the machine.
+**Consequences.** Hooks live in `.git/hooks`, so each clone must run the install command once. `--no-verify` can skip them, so CI stays the final gate.
+
 ---
 
 ## Open decisions

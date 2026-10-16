@@ -304,6 +304,25 @@ A: Read the vendor timeline, check whether the date has passed, and upgrade on m
 
 ---
 
+## 23. Pre-commit hooks (step 1.19)
+
+**Q: How do you stop bad code reaching the repository?**
+A: Layers. The editor formats on save, pre-commit hooks run lint and format at commit time and type-check and tests at push time, and CI re-runs everything on a clean machine. Each layer catches what the previous one missed.
+
+**Q: Why not rely on CI alone?**
+A: CI feedback takes minutes and the bad commit is already pushed. Hooks fail in seconds before the commit exists. I learned this from a real case: a format failure got pushed and CI caught it.
+
+**Q: Why local hooks instead of a hooks repository with its own tool versions?**
+A: One source of truth for versions. Hook versions can drift from the lockfile and pass where CI fails.
+
+**Q: Can developers bypass hooks?**
+A: Yes, with `--no-verify`, and hooks must be installed per clone. That is why CI is the non-negotiable gate, and branch protection can require it.
+
+**Q: What is "shift left"?**
+A: Finding problems earlier in the pipeline, where they are cheaper to fix: editor, then commit, then CI, then production.
+
+---
+
 ## Coming next (to be added as we build)
 
 Continuous integration, pre-commit hooks, containerisation, database migrations, background jobs, evaluation-driven development, security and guardrails, observability, and deployment.
