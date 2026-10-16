@@ -1,0 +1,20 @@
+# secrets: never bake keys into an image
+.env
+.env.*
+
+# version control and tooling
+.git
+.github
+.pre-commit-config.yaml
+
+# local environments and caches
+.venv
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# not needed at runtime
+tests
+docs
