@@ -323,7 +323,7 @@ A: Finding problems earlier in the pipeline, where they are cheaper to fix: edit
 
 ---
 
-## Docker (step 1.20)
+## 24. Docker (step 1.20)
 
 **Q: How do you handle secrets in Docker?**
 A: Never in the image. `.dockerignore` keeps `.env` out of the build context, and secrets are injected as environment variables at container start. Image layers can be unpacked, so anything baked in is readable.
@@ -345,7 +345,7 @@ A: Multi-stage build, drop build-only tools, or a distroless base. I chose singl
 
 ---
 
-## Database in Docker Compose
+## 25. Database in Docker Compose
 
 **Q: Why Postgres with pgvector instead of a dedicated vector database?**
 Our corpus is regulatory circulars, so thousands to low millions of chunks, not billions. Postgres gives us relational metadata (regulator, circular number, date, status), vectors and full-text search in one place, so hybrid retrieval and metadata filtering happen in one query with real transactions. A separate vector DB would add another system to run, secure and keep in sync. If scale demanded it, the retrieval layer is isolated, so we could swap it.
@@ -358,6 +358,51 @@ Nothing. The data directory is a named volume, which outlives containers. Only `
 
 **Q: How do you keep the database secure locally?**
 Credentials live in a git-ignored `.env`, Compose fails fast if they are missing, the port is bound to 127.0.0.1 only, and the image tag is pinned.
+
+---
+
+## 27. Database connection, health and readiness
+
+**Q: What is the difference between liveness and readiness?**
+Liveness asks "is the process alive?" and a failure means restart it. Readiness asks "can it serve traffic right now?" and a failure means stop sending traffic, but do not restart. My `/health` has no dependencies. My `/ready` checks the database. If liveness depended on the database, a short database outage would make the orchestrator restart every healthy app instance at once and turn a small incident into a large one.
+
+**Q: Tell me about a time something hung and how you debugged it.**
+A database check froze in development. I did not guess. First I confirmed the network path (the port accepted connections, only Docker owned it, Postgres logs were clean). Then I ran single-variable experiments (force IPv4, disable Kerberos negotiation). Nothing reproduced the freeze, so the honest conclusion was a one-time stall in Docker Desktop's port forwarder. What I could fix for certain was the design flaw underneath: no timeout. I added a connect timeout, then reproduced the stall deliberately by stopping the container and verified the app now fails in seconds with a clear log line.
+
+**Q: Why do you set timeouts on everything that crosses a network?**
+Without one, a stalled dependency can hold a request or a worker forever and cascade. A timeout turns an unknown wait into a fast, observable failure that readiness checks, retries and alerts can act on.
+
+**Q: How do you test an endpoint that depends on a database?**
+I inject the dependency. `create_app` takes the check as an argument: production uses the real one and tests pass `lambda: True` or `lambda: False`. That tests the endpoint logic quickly and without Docker. Real database behaviour is covered by a smaller number of integration tests.
+
+**Q: Did your tests ever catch a real mistake?**
+Yes. I mistyped the HTTP status constant as `HTTP_500_SERVICE_UNAVAILABLE`. Static typing did not flag it because the constants resolve at runtime, but the test for the 503 path failed immediately. It is a good reason to test failure paths, not only happy paths.
+
+**Q: How do you keep database passwords safe in code?**
+The password is a `SecretStr`, so it is masked in logs and tracebacks. It is unwrapped in one function only, when the connection URL is built, and URL parts are escaped by the library instead of string-formatted.
+
+## 28. Schema and migrations
+
+**Q: Why pgvector and a 768-dimension embedding?**
+Postgres lets me keep metadata, vectors and keyword search in one database, so hybrid retrieval and filters like "only active circulars" run in one query. The fast HNSW index in pgvector supports up to 2000 dimensions for the standard vector type, so I used 768 instead of the model's 3072 default. Smaller vectors also mean less storage and faster search. The trade-off is that changing the size later means re-embedding everything, so it is a deliberate choice recorded in the decision log.
+
+**Q: Why two tables instead of one?**
+Facts about a circular (regulator, date, status) would repeat on every chunk. In two tables a status change is one row update, and retrieval joins to get citation details. That is normalization: one source of truth per fact.
+
+**Q: Why store the embedding model name on each chunk?**
+Vectors from different models are not comparable. Storing the model lets me detect a mix and re-embed deliberately. The dimension is pinned by the column type.
+
+**Q: Why are there database constraints when the app validates too?**
+The app is not the only writer: scripts, migrations and future services can write too. A CHECK constraint holds for all of them, so it is the last line of defense for data integrity.
+
+**Q: How do you manage schema changes?**
+With Alembic migrations kept in git. Each is a numbered file with an upgrade and a downgrade. Applied migrations are never edited, I add a new one. I use autogenerate to save typing but always review it, because it cannot see extensions, renames or data changes. In my own project the review caught a typo in a CHECK constraint (a wrong column name) that autogenerate had faithfully copied.
+
+**Q: How do you know a migration works on a clean machine?**
+I run it against a brand-new scratch database. My dev database already had the extension from earlier manual work, so a normal upgrade would have passed even if the migration was missing that line. I also run downgrade then upgrade to prove it is reversible.
+
+**Q: Why name constraints explicitly?**
+Unnamed constraints get database-generated names that differ between environments, and migrations that drop or alter them then depend on names you never chose. A naming convention makes names deterministic and readable in error messages.
 
 ---
 

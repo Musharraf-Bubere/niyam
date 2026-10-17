@@ -133,6 +133,23 @@ Format of each entry: context, options considered, decision, trade-off.
 - **Why:** One database for relational data, vectors and keyword search keeps the system simple, and hybrid retrieval can run in a single SQL query. Pinning avoids surprise upgrades. Binding to localhost keeps the database off the network.
 - **Consequences:** The host port is configurable (`NIYAM_DB_PORT`) because 5432 was already taken by a local Postgres on one machine. The container port stays 5432.
 
+## D-018: Database access layer, timeouts and readiness endpoint
+
+- **Status:** Accepted
+- **Context:** The API needs a database connection that is safe with secrets, never hangs, and reports its state to orchestrators and monitoring.
+- **Decision:** `Settings` holds `NIYAM_DB_*` values (password as `SecretStr`). `db/engine.py` builds the URL with SQLAlchemy `URL.create`, creates the engine with `pool_pre_ping` and a 5-second connect timeout, and exposes `check_database()` which returns a bool and logs failures. The API exposes `/health` (liveness, no dependencies) and `/ready` (readiness, 200 or 503 depending on the database). The database check is injected into `create_app`, and the real engine is created lazily on first use.
+- **Why:** `URL.create` escapes special characters in passwords. The secret is unwrapped in exactly one place. A missing timeout turned a stalled Docker port forwarder into a frozen process, so every network call gets a bounded wait. Keeping liveness independent of the database prevents restart storms during a database outage. Injection keeps API tests free of Docker.
+- **Consequences:** The app starts without a database or password (readiness reports not ready). Worst-case check time is about 10 seconds because psycopg tries both IPv6 and IPv4 addresses; to be tuned when probes are configured.
+
+## D-019: Schema, pgvector sizing and migrations
+
+- **Status:** Accepted
+- **Context:** Niyam needs to store circular metadata, text chunks, vectors and keyword-search data in one place, with a schema that can be rebuilt identically anywhere.
+- **Decision:** Two tables. `documents` holds one row per circular (regulator, circular number, title, issue date, status, source URL, content hash). `chunks` holds one row per passage (position, page, section, text, embedding, embedding model, generated full-text column). Embeddings are `vector(768)` with an HNSW cosine index. Keyword search uses a generated `tsvector` column with a GIN index. `regulator` and `status` are enforced by `CHECK` constraints. Constraint names follow a naming convention. The schema is created only through Alembic migrations, and the first migration also enables the `vector` extension.
+- **Why:** 768 dimensions fit under pgvector's 2000-dimension limit for HNSW indexes while keeping storage and search fast. A nullable embedding lets ingestion work in stages. Storing the embedding model name per chunk prevents mixing vectors from different models. A generated column means the keyword index can never go stale. Database-level checks protect integrity from any writer. Migrations make the schema reviewable, repeatable and reversible.
+- **Deferred on purpose:** a `supersedes` link between circulars and a unique constraint on circular number, until real data shows how they are numbered and amended.
+- **Consequences:** Changing the embedding size needs a new migration and a full re-embed. Downgrading does not drop the `vector` extension.
+
 ---
 
 ## Open decisions
