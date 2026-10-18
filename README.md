@@ -12,19 +12,19 @@ Regulatory text is long, dense and changes often. A plain chatbot can sound conf
 
 ## Status
 
-| Area | State |
-| --- | --- |
-| Project setup, tooling, CI | Done |
-| Configuration and logging | Done |
-| Chat model factory (model changeable by config only) | Done |
-| Data layer (PostgreSQL, pgvector) | Planned |
-| Ingestion of RBI and SEBI circulars | Planned |
-| Hybrid retrieval and reranking | Planned |
-| Evaluation harness | Planned |
-| Answer generation with citations | Planned |
-| API (FastAPI) and Streamlit UI | Planned |
-| Agent orchestration (LangGraph) | Planned |
-| Guardrails, observability (LangSmith), deployment | Planned |
+| Area                                                 | State   |
+| ---------------------------------------------------- | ------- |
+| Project setup, tooling, CI                           | Done    |
+| Configuration and logging                            | Done    |
+| Chat model factory (model changeable by config only) | Done    |
+| Data layer (PostgreSQL, pgvector)                    | Done    |
+| Ingestion of RBI and SEBI circulars                  | Planned |
+| Hybrid retrieval and reranking                       | Planned |
+| Evaluation harness                                   | Planned |
+| Answer generation with citations                     | Planned |
+| API (FastAPI) and Streamlit UI                       | Planned |
+| Agent orchestration (LangGraph)                      | Planned |
+| Guardrails, observability (LangSmith), deployment    | Planned |
 
 ## Tech choices
 
@@ -47,6 +47,7 @@ git clone https://github.com/Musharraf-Bubere/niyam.git
 cd niyam
 uv sync
 ```
+
 Install the Git hooks once, so checks run automatically before each commit and push:
 
 ```bash
