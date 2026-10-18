@@ -8,6 +8,26 @@ on:
 jobs:
   quality:
     runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.0-pg16
+        env:
+          POSTGRES_USER: niyam
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: niyam
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U niyam -d niyam"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      NIYAM_DB_HOST: localhost
+      NIYAM_DB_PORT: "5432"
+      NIYAM_DB_USER: niyam
+      NIYAM_DB_PASSWORD: ci-only-password
+      NIYAM_DB_NAME: niyam
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v9.0.0
@@ -18,7 +38,6 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run mypy src tests
       - run: uv run pytest
-
 
   docker:
     runs-on: ubuntu-24.04
