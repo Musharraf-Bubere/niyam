@@ -150,6 +150,17 @@ Format of each entry: context, options considered, decision, trade-off.
 - **Deferred on purpose:** a `supersedes` link between circulars and a unique constraint on circular number, until real data shows how they are numbered and amended.
 - **Consequences:** Changing the embedding size needs a new migration and a full re-embed. Downgrading does not drop the `vector` extension.
 
+## D-020: Document parsing with Docling
+
+- **Status:** Accepted
+- **Context:** Niyam must turn RBI and SEBI circular PDFs into clean text and tables with reliable page numbers. Regulatory answers often depend on tables (for example, minimum investment limits per fund category), so table quality decides answer quality.
+- **Options tested:** PyMuPDF (fast, light) and Docling (layout and table models), run on the same hard pages from three real documents.
+- **Decision:** Use Docling as the parsing engine, behind a small parser interface so it can be replaced. Ingestion runs as a background job, not in the API process, and its heavy dependencies live in an optional dependency group so the API image stays small.
+- **Why:** On a real SEBI scheme-categorisation table, PyMuPDF produced 21 jumbled columns with every cell repeated, while Docling produced a clean four-column table with one row per scheme. All three PDFs have a text layer, so no OCR is needed. LangChain loaders do not change this, because they wrap an engine and the engine decides the quality.
+- **Known limitations:** Docling assigned the last line of one table cell to the next row (a "- 25% of total assets" line moved from the Multi Cap row to the Large Cap row). This becomes a case in the evaluation set (Phase 5). The "Withdrawn" watermark on withdrawn RBI documents is part of the text layer and appears between sentences, once per page, so ingestion removes it at the document-structure level and uses it as a cross-check against the manifest status. Parsing takes roughly 5 to 10 seconds per page on CPU.
+- **Page numbers:** Citations use the physical page number counted from 1, as shown by a PDF viewer. The PDFs carry no page-label metadata and the printed numbers differ (SEBI annexures have no footer numbers).
+- **Consequences:** Large install (PyTorch). Models must be downloaded at build time, never at runtime, and the container must be tested with no network. Ingestion is slow, so it runs as a background job.
+
 ---
 
 ## Open decisions

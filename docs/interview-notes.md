@@ -406,6 +406,28 @@ Unnamed constraints get database-generated names that differ between environment
 
 ---
 
+## 29. Document parsing and ingestion
+
+**Q: How did you choose your PDF parser?**
+I ran a bake-off on my worst-case documents instead of trusting reputations. A light parser (PyMuPDF) turned a regulatory table into 21 jumbled columns. Docling returned a clean four-column table. Tables carry the answers in regulatory text, so I chose Docling and recorded the decision with the evidence.
+
+**Q: Docling wasn't perfect. What did you do about it?**
+It moved one table cell's last line into the next row. I recorded it as a known limitation and made it a test case for my evaluation set, instead of pretending the parser was flawless. I also treat the parser as swappable behind an interface.
+
+**Q: How do you handle noisy source documents?**
+I inspect them first. Withdrawn RBI directions carry a "Withdrawn" watermark inside the text layer, which would otherwise end up in the middle of embedded sentences. I strip it at the structure level, and I also use it to cross-check the status I recorded in my manifest.
+
+**Q: Why not just use LangChain's PDF loaders?**
+LangChain gives the interface (`Document`, loaders, splitters, embeddings). The engine under the loader decides parsing quality. I choose the engine on evidence and wrap it in the LangChain interface.
+
+**Q: What is page-number correctness and why does it matter?**
+A citation is only useful if a reader can find the page. These PDFs have no page-label metadata and the printed numbers are inconsistent, so I cite the physical page number, which anyone can verify by opening the file.
+
+**Q: Why run ingestion as a background job?**
+Parsing is CPU-heavy, about 5 to 10 seconds per page, so it must not run inside the web API. A worker also lets me keep the heavy parser dependencies out of the API image.
+
+---
+
 ## Coming next (to be added as we build)
 
 Continuous integration, pre-commit hooks, containerisation, database migrations, background jobs, evaluation-driven development, security and guardrails, observability, and deployment.
