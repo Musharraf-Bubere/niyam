@@ -77,6 +77,18 @@ uv run pytest
 
 Unit tests use a fake model, so they need no API key and no network.
 
+## Developer tools
+
+Niyam keeps an up-to-date map of its own code, so layers and dependencies are easy to review.
+
+- **Enable the automatic refresh once:** `uv run pre-commit install --hook-type post-commit`. After every commit, the code graph is rebuilt in about 2 seconds, with no API key and no network.
+- **Explore the graph:** open `tools/graphify-explorer.html` in a browser (it needs internet for its CDN libraries) and load `graphify-out/graph.json`. You can search, filter by community, inspect a node and trace the shortest path between two nodes.
+- **Rebuild by hand:** `graphify update . --force`.
+- **Upgrade the tool on purpose:** `uv tool upgrade graphifyy`, then rebuild and compare the node count, because a new version can change the output format.
+- **Scope:** `.graphifyignore` limits the graph to application code. `graphify-out/` is generated and git-ignored.
+
+Why it works this way: see [D-021](docs/decision-log.md).
+
 ## Run with Docker
 
 ```bash

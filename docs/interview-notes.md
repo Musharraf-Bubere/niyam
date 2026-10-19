@@ -428,6 +428,28 @@ Parsing is CPU-heavy, about 5 to 10 seconds per page, so it must not run inside 
 
 ---
 
+## Code graph and tooling discipline
+
+**Q: How do you keep an architecture diagram from going stale?**
+I don't draw it by hand. A code graph is generated from the source with local AST parsing and rebuilt after every commit, so it cannot drift from the code. The final architecture document is written once, near the end, instead of being patched through the project.
+
+**Q: Why a post-commit hook and not a pre-commit one?**
+Hooks have different jobs. Pre-commit and pre-push are gates: they can block, so they hold fast and slow quality checks. A graph refresh is a side effect, so it runs after the commit is saved and can never block my work.
+
+**Q: Why not use the tool's own hook installer?**
+It writes four hooks straight into `.git/hooks`, where nobody can review them and they can collide with the pre-commit framework. I keep every hook in one versioned config file so a reviewer sees exactly what runs.
+
+**Q: How did you verify the hook worked?**
+A green check only proves the command exited cleanly. I added a throwaway function, ran the hook, and watched the node count go from 61 to 62, then reverted it. I also learned the tool deliberately leaves its output untouched when nothing changed, so a passing hook does not always mean a rewrite.
+
+**Q: Did you check that the new command did the same job as the old one?**
+Yes, and it didn't. The update command also indexed my docs folder and README, adding 96 nodes of noise to a code graph. Comparing node counts by folder caught it, and I fixed it with an ignore file instead of living with a graph nobody could read.
+
+**Q: Why upgrade the tool by hand and not automatically?**
+A tool upgrade can change its output format and silently break whatever reads it. I upgrade on purpose, rebuild, and compare the numbers before trusting the new version.
+
+---
+
 ## Coming next (to be added as we build)
 
 Continuous integration, pre-commit hooks, containerisation, database migrations, background jobs, evaluation-driven development, security and guardrails, observability, and deployment.
