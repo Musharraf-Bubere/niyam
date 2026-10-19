@@ -1518,6 +1518,19 @@ function start() {
   Store.setGraph(normalizeGraph(SAMPLE), 'sample-niyam-graph.json', true);
   if (!vizOk) UI.setPhysics('idle', 'no graph library', 0);
   refreshIcons();
+  tryAutoLoad();
+}
+
+// When the page is served next to the project (for example by VS Code Live Server at /tools/), open the real
+// graph at ../graphify-out/graph.json automatically. Opened from file:// or in a hosted preview the request
+// simply fails and the sample stays, so nothing breaks. no-store avoids a stale cached copy.
+async function tryAutoLoad() {
+  try {
+    const response = await fetch('../graphify-out/graph.json', { cache: 'no-store' });
+    if (!response.ok) return;
+    const graph = parseGraphText(await response.text());
+    Store.setGraph(graph, 'graphify-out/graph.json', false);
+  } catch (_) { /* not served beside graphify-out: keep the sample */ }
 }
 // Library scripts above are synchronous, so by here they either loaded or failed.
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
