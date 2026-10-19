@@ -1,0 +1,1526 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Graphify Explorer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<!-- CDN libraries (pinned). These need an internet connection: Tailwind CSS, Lucide icons, vis-network. -->
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.9/standalone/umd/vis-network.min.js"></script>
+<style>
+/*
+  Layout concept: developer-tool chrome (top bar, filter sidebar, inspector drawer) around one dominant
+  graph canvas laid on a faint cyan grid. The brief asks for a single dark look, so there is no light theme.
+  Tailwind supplies small layout utilities only; every component below is styled from these tokens, so the
+  tool stays usable if the Tailwind CDN is slow to load.
+*/
+:root {
+  color-scheme: dark;
+  --bg: #020617;          /* slate 950: canvas */
+  --panel: #0f172a;       /* slate 900: panels */
+  --raised: #1e293b;      /* slate 800: controls */
+  --line: #223049;
+  --line-strong: #334155;
+  --fg: #f1f5f9;
+  --muted: #94a3b8;
+  --faint: #64748b;
+  --cyan: #22d3ee;
+  --violet: #a78bfa;
+  --teal: #2dd4bf;
+  --amber: #fbbf24;
+  --rose: #fb7185;
+  --good: #34d399;
+  --font-body: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --head: 56px;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  padding-block: 12px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+[hidden] { display: none !important; }
+.mono { font-family: var(--font-mono); }
+.muted { color: var(--muted); }
+.faint { color: var(--faint); }
+* { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+
+/* ---------- application grid ---------- */
+.app {
+  position: relative;
+  height: 100%;
+  display: grid;
+  grid-template-rows: var(--head) minmax(0, 1fr);
+  grid-template-columns: 308px minmax(0, 1fr) 0px;
+  grid-template-areas: "top top top" "side stage insp";
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  transition: grid-template-columns .22s ease;
+}
+.app[data-inspector="open"] { grid-template-columns: 308px minmax(0, 1fr) 372px; }
+
+.topbar {
+  grid-area: top;
+  display: flex; align-items: center; gap: 12px;
+  padding: 0 14px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  min-width: 0;
+}
+.brand { display: flex; align-items: center; gap: 10px; flex: none; }
+.brand-mark {
+  width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center;
+  background: rgba(34, 211, 238, .12); color: var(--cyan); border: 1px solid rgba(34, 211, 238, .35);
+}
+.brand-name { font-family: var(--font-mono); font-weight: 600; font-size: 14px; letter-spacing: -.01em; white-space: nowrap; }
+.file-chip {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 240px; min-width: 0;
+  padding: 4px 10px; border-radius: 999px; background: var(--bg); border: 1px solid var(--line);
+  font-family: var(--font-mono); font-size: 12px; color: var(--muted);
+}
+.file-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.counts { font-family: var(--font-mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
+.counts b { color: var(--fg); font-weight: 500; }
+.search-wrap { position: relative; flex: 1 1 280px; max-width: 440px; min-width: 0; }
+.status { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 11px; color: var(--muted); white-space: nowrap; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); flex: none; }
+.dot.ok { background: var(--good); box-shadow: 0 0 8px rgba(52, 211, 153, .6); }
+.dot.warn { background: var(--amber); box-shadow: 0 0 8px rgba(251, 191, 36, .5); }
+.dot.busy { background: var(--cyan); box-shadow: 0 0 8px rgba(34, 211, 238, .6); animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .35; } }
+
+/* ---------- controls ---------- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 6px 12px; border-radius: 8px; border: 1px solid var(--line-strong);
+  background: var(--raised); color: var(--fg); font-size: 13px; font-weight: 500; line-height: 1.2;
+  transition: border-color .15s, background .15s, transform .05s;
+}
+.btn:hover { border-color: var(--cyan); }
+.btn:active { transform: translateY(1px); }
+.btn svg { width: 15px; height: 15px; flex: none; }
+.btn-primary { background: var(--cyan); border-color: var(--cyan); color: #03222b; }
+.btn-primary:hover { background: #67e8f9; border-color: #67e8f9; }
+.btn-sm { padding: 3px 9px; font-size: 12px; border-radius: 6px; }
+.icon-btn {
+  width: 34px; height: 34px; padding: 0; display: inline-grid; place-items: center; flex: none;
+  border-radius: 8px; border: 1px solid var(--line-strong); background: var(--raised);
+  transition: border-color .15s, color .15s;
+}
+.icon-btn:hover { border-color: var(--cyan); color: var(--cyan); }
+.icon-btn svg { width: 16px; height: 16px; }
+:is(button, input, select, textarea, summary, [tabindex]):focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+.input, select.input, textarea.input {
+  width: 100%; padding: 7px 10px; border-radius: 8px; background: var(--bg); border: 1px solid var(--line-strong);
+  font-size: 13px; transition: border-color .15s;
+}
+.input::placeholder { color: var(--faint); }
+.input:focus { border-color: var(--cyan); outline: none; }
+.search-input { padding-left: 32px; }
+.search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 15px; height: 15px; color: var(--faint); pointer-events: none; }
+input[type="checkbox"], input[type="range"] { accent-color: var(--cyan); }
+textarea.input { font-family: var(--font-mono); font-size: 12px; line-height: 1.5; resize: vertical; }
+
+.picklist {
+  position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 40; margin: 0; padding: 4px; list-style: none;
+  background: var(--raised); border: 1px solid var(--line-strong); border-radius: 10px; box-shadow: 0 14px 34px rgba(0, 0, 0, .5);
+  max-height: 320px; overflow-y: auto;
+}
+.pick { display: flex; flex-direction: column; gap: 1px; padding: 7px 9px; border-radius: 7px; cursor: pointer; }
+.pick.active, .pick:hover { background: rgba(34, 211, 238, .12); }
+.pick-label { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pick-sub { font-family: var(--font-mono); font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- sidebar ---------- */
+.sidebar { grid-area: side; overflow-y: auto; min-width: 0; background: var(--panel); border-right: 1px solid var(--line); }
+.sec { padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.sec-title, details.sec > summary {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: .09em; text-transform: uppercase; color: var(--faint);
+}
+details.sec > summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; list-style: none; }
+details.sec > summary::-webkit-details-marker { display: none; }
+details.sec > summary .chev { width: 14px; height: 14px; transition: transform .15s; }
+details.sec[open] > summary .chev { transform: rotate(90deg); }
+details.sec > summary .tally { margin-left: auto; color: var(--muted); letter-spacing: 0; }
+.sec-body { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; }
+.field { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--muted); }
+.field-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; }
+.check { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 12px 0 0; }
+.stat { padding: 8px 10px; border-radius: 8px; background: var(--bg); border: 1px solid var(--line); min-width: 0; }
+.stat dt { font-size: 11px; color: var(--muted); }
+.stat dd { margin: 1px 0 0; font-family: var(--font-mono); font-size: 17px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.warn-list { margin: 8px 0 0; padding-left: 16px; font-size: 12px; color: var(--amber); display: flex; flex-direction: column; gap: 4px; }
+
+.legend { display: flex; flex-direction: column; gap: 1px; max-height: 280px; overflow-y: auto; margin-top: 8px; }
+.legend-row { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 6px; cursor: pointer; font-size: 13px; min-width: 0; }
+.legend-row:hover { background: var(--raised); }
+.legend-row .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.legend-row .count { font-family: var(--font-mono); font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+
+/* ---------- stage (graph canvas) ---------- */
+.stage {
+  grid-area: stage; position: relative; min-width: 0; min-height: 0; overflow: hidden; background-color: var(--bg);
+  background-image:
+    radial-gradient(ellipse at 50% 45%, rgba(34, 211, 238, .06), transparent 62%),
+    linear-gradient(rgba(34, 211, 238, .045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(34, 211, 238, .045) 1px, transparent 1px);
+  background-size: auto, 36px 36px, 36px 36px;
+}
+#graph { position: absolute; inset: 0; outline: none; }
+.overlay { position: absolute; z-index: 5; }
+.zoom-stack { top: 12px; right: 12px; display: flex; flex-direction: column; gap: 6px; }
+.hint { left: 12px; bottom: 12px; font-family: var(--font-mono); font-size: 11px; color: var(--faint); max-width: calc(100% - 200px); }
+.hint kbd { padding: 1px 5px; border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: 4px; color: var(--muted); font-family: inherit; }
+.phys { right: 12px; bottom: 12px; padding: 5px 10px; border-radius: 999px; background: rgba(15, 23, 42, .85); border: 1px solid var(--line); }
+.banner {
+  top: 12px; left: 12px; right: 64px; max-width: 520px; display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 10px;
+  background: rgba(15, 23, 42, .92); border: 1px solid rgba(251, 191, 36, .35); font-size: 12px; color: var(--muted);
+}
+.banner svg { color: var(--amber); flex: none; width: 16px; height: 16px; }
+.progress { top: 0; left: 0; right: 0; height: 2px; background: transparent; }
+.progress > i { display: block; height: 100%; width: 0; background: var(--cyan); box-shadow: 0 0 10px var(--cyan); transition: width .12s linear; }
+.card-center {
+  inset: 0; display: grid; place-items: center; padding: 20px; z-index: 6; pointer-events: none;
+}
+.card-center > div {
+  pointer-events: auto; max-width: 420px; text-align: center; padding: 22px; border-radius: 14px;
+  background: rgba(15, 23, 42, .94); border: 1px solid var(--line-strong);
+}
+.card-center h2 { margin: 10px 0 6px; font-size: 16px; font-weight: 600; }
+.card-center p { margin: 0 0 14px; color: var(--muted); font-size: 13px; }
+
+/* ---------- inspector ---------- */
+.inspector { grid-area: insp; overflow: hidden; background: var(--panel); border-left: 1px solid var(--line); min-width: 0; }
+.inspector-inner { width: 372px; height: 100%; overflow-y: auto; }
+.insp-head { display: flex; align-items: flex-start; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--panel); z-index: 2; }
+.insp-title { flex: 1; min-width: 0; margin: 0; font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line-strong); font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+.kv { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 6px 10px; margin: 0; font-size: 13px; }
+.kv dt { color: var(--faint); font-size: 12px; padding-top: 1px; }
+.kv dd { margin: 0; overflow-wrap: anywhere; }
+.kv dd.mono { font-size: 12px; }
+.links { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
+.link-row { display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 6px; text-align: left; border: 0; background: transparent; border-radius: 6px; min-width: 0; }
+.link-row:hover { background: var(--raised); }
+.link-row .rel { flex: none; font-family: var(--font-mono); font-size: 10.5px; color: var(--cyan); padding: 1px 6px; border-radius: 4px; background: rgba(34, 211, 238, .1); max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.link-row .who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.sub-title { margin: 14px 0 0; font-size: 12px; color: var(--muted); font-weight: 500; }
+.path-steps { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; }
+.path-steps li { display: flex; flex-direction: column; }
+.path-node { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 8px; background: rgba(251, 191, 36, .08); border: 1px solid rgba(251, 191, 36, .3); font-size: 13px; min-width: 0; }
+.path-node span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.path-edge { padding: 3px 0 3px 18px; font-family: var(--font-mono); font-size: 11px; color: var(--amber); }
+.raw { margin: 8px 0 0; padding: 10px; max-height: 220px; overflow: auto; border-radius: 8px; background: var(--bg); border: 1px solid var(--line); font-family: var(--font-mono); font-size: 11px; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; }
+.msg { font-size: 12.5px; color: var(--muted); margin: 8px 0 0; }
+.msg.err { color: var(--rose); }
+
+/* ---------- modal, toasts, drag overlay ---------- */
+.scrim { position: fixed; inset: 0; z-index: 50; background: rgba(2, 6, 23, .72); backdrop-filter: blur(3px); display: grid; place-items: center; padding: 16px; }
+.modal { width: min(720px, 100%); max-height: calc(100% - 8px); overflow-y: auto; background: var(--panel); border: 1px solid var(--line-strong); border-radius: 14px; box-shadow: 0 30px 80px rgba(0, 0, 0, .6); }
+.modal-head { display: flex; align-items: center; gap: 10px; padding: 16px 18px; border-bottom: 1px solid var(--line); }
+.modal-head h2 { margin: 0; font-size: 16px; font-weight: 600; flex: 1; }
+.modal-body { padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+.tabs { display: inline-flex; padding: 3px; gap: 3px; border-radius: 10px; background: var(--bg); border: 1px solid var(--line); align-self: flex-start; }
+.tab { padding: 6px 14px; border-radius: 7px; border: 0; background: transparent; color: var(--muted); font-size: 13px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px; }
+.tab svg { width: 15px; height: 15px; }
+.tab[aria-selected="true"] { background: var(--raised); color: var(--fg); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.dropzone {
+  display: grid; justify-items: center; gap: 8px; padding: 34px 16px; text-align: center; border-radius: 12px; cursor: pointer;
+  border: 1.5px dashed var(--line-strong); background: rgba(34, 211, 238, .03); transition: border-color .15s, background .15s;
+}
+.dropzone:hover, .dropzone.over { border-color: var(--cyan); background: rgba(34, 211, 238, .08); }
+.dropzone svg { width: 28px; height: 28px; color: var(--cyan); }
+.dropzone strong { font-weight: 600; }
+.cdn-note { font-size: 12px; color: var(--faint); }
+.drag-veil { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; background: rgba(2, 6, 23, .8); border: 2px dashed var(--cyan); margin: 8px; border-radius: 16px; font-family: var(--font-mono); color: var(--cyan); pointer-events: none; }
+.toasts { position: fixed; z-index: 80; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 8px; width: min(440px, calc(100% - 32px)); pointer-events: none; }
+.toast { display: flex; gap: 10px; align-items: flex-start; padding: 10px 14px; border-radius: 10px; background: var(--raised); border: 1px solid var(--line-strong); font-size: 13px; box-shadow: 0 14px 34px rgba(0, 0, 0, .5); animation: rise .18s ease-out; pointer-events: auto; }
+.toast svg { width: 16px; height: 16px; margin-top: 2px; flex: none; }
+.toast.ok svg { color: var(--good); } .toast.error { border-color: rgba(251, 113, 133, .5); } .toast.error svg { color: var(--rose); } .toast.warn svg { color: var(--amber); } .toast.info svg { color: var(--cyan); }
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } }
+
+.search-mobile { display: none; }
+.menu-btn, .scrim-drawer { display: none; }
+
+/* ---------- narrow screens: sidebar and inspector become drawers over the canvas ---------- */
+@media (max-width: 1023px) {
+  .app, .app[data-inspector="open"] { grid-template-columns: minmax(0, 1fr); grid-template-areas: "top" "stage"; }
+  .sidebar, .inspector {
+    position: absolute; z-index: 30; top: var(--head); bottom: 0; width: min(340px, 92%);
+    transition: transform .22s ease; box-shadow: 0 0 40px rgba(0, 0, 0, .55);
+  }
+  .sidebar { left: 0; transform: translateX(-104%); }
+  .inspector { right: 0; width: min(390px, 100%); transform: translateX(104%); }
+  .app[data-sidebar="open"] .sidebar, .app[data-inspector="open"] .inspector { transform: none; }
+  .inspector-inner { width: 100%; }
+  .menu-btn { display: inline-grid; }
+  .scrim-drawer { position: absolute; inset: var(--head) 0 0 0; z-index: 20; background: rgba(2, 6, 23, .55); }
+  .app[data-sidebar="open"] .scrim-drawer, .app[data-inspector="open"] .scrim-drawer { display: block; }
+}
+@media (max-width: 767px) {
+  .search-wrap, .counts, .file-chip, .status.hide-sm { display: none; }
+  .search-mobile { display: block; }
+  .hint { display: none; }
+  .brand-name { font-size: 13px; }
+  .banner { right: 60px; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; } }
+</style>
+
+<div class="app" id="app" data-sidebar="closed" data-inspector="closed">
+
+  <header class="topbar">
+    <button class="icon-btn menu-btn" id="btn-menu" aria-label="Open filters and settings"><i data-lucide="menu"></i></button>
+    <div class="brand">
+      <div class="brand-mark"><i data-lucide="network"></i></div>
+      <span class="brand-name">Graphify Explorer</span>
+    </div>
+    <div class="file-chip" title="Current graph"><i data-lucide="file-json" style="width:14px;height:14px"></i><span id="hdr-file">no graph</span></div>
+    <div class="counts" id="hdr-counts" aria-live="polite"></div>
+    <div class="search-wrap" id="search-wrap-top">
+      <i data-lucide="search" class="search-icon"></i>
+      <input id="search-top" class="input search-input" type="search" placeholder="Search nodes, files, types   ( / )" autocomplete="off"
+             role="combobox" aria-expanded="false" aria-controls="picklist-top" aria-label="Search nodes">
+      <ul id="picklist-top" class="picklist" role="listbox" hidden></ul>
+    </div>
+    <div style="flex:1"></div>
+    <div class="status hide-sm" title="Graph and library status"><span class="dot" id="dot-libs"></span><span id="lbl-libs">libraries</span></div>
+    <button class="btn btn-primary" data-action="open-import"><i data-lucide="upload"></i><span>Import</span></button>
+  </header>
+
+  <aside class="sidebar" id="sidebar" aria-label="Filters and settings">
+
+    <section class="sec">
+      <div class="sec-title">Graph</div>
+      <div class="field-row" style="margin-top:10px"><span class="mono" id="side-file" style="overflow-wrap:anywhere">no graph</span></div>
+      <dl class="stats">
+        <div class="stat"><dt>Nodes</dt><dd id="st-nodes">0</dd></div>
+        <div class="stat"><dt>Edges</dt><dd id="st-edges">0</dd></div>
+        <div class="stat"><dt>Communities</dt><dd id="st-comm">0</dd></div>
+        <div class="stat"><dt>Isolated nodes</dt><dd id="st-iso">0</dd></div>
+        <div class="stat"><dt>Node types</dt><dd id="st-types">0</dd></div>
+        <div class="stat"><dt>Showing</dt><dd id="st-visible">0</dd></div>
+      </dl>
+      <details id="warnings" hidden style="margin-top:8px">
+        <summary class="muted" style="cursor:pointer;font-size:12px"><span id="warn-count"></span></summary>
+        <ul class="warn-list" id="warn-list"></ul>
+      </details>
+      <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+        <button class="btn btn-primary btn-sm" data-action="open-import"><i data-lucide="upload"></i>Load JSON</button>
+        <button class="btn btn-sm" data-action="load-sample"><i data-lucide="rotate-ccw"></i>Sample</button>
+      </div>
+    </section>
+
+    <section class="sec search-mobile">
+      <div class="sec-title" style="margin-bottom:8px">Search</div>
+      <div style="position:relative">
+        <i data-lucide="search" class="search-icon"></i>
+        <input id="search-side" class="input search-input" type="search" placeholder="Search nodes" autocomplete="off"
+               role="combobox" aria-expanded="false" aria-controls="picklist-side" aria-label="Search nodes">
+        <ul id="picklist-side" class="picklist" role="listbox" hidden></ul>
+      </div>
+    </section>
+
+    <details class="sec" open id="sec-community">
+      <summary><i data-lucide="chevron-right" class="chev"></i>Communities<span class="tally" id="tally-community"></span></summary>
+      <div class="sec-body">
+        <div style="display:flex;gap:6px"><button class="btn btn-sm" data-action="filter-all" data-group="community">All</button><button class="btn btn-sm" data-action="filter-none" data-group="community">None</button></div>
+        <div class="legend" id="legend-community"></div>
+      </div>
+    </details>
+
+    <details class="sec" id="sec-type">
+      <summary><i data-lucide="chevron-right" class="chev"></i>Node types<span class="tally" id="tally-type"></span></summary>
+      <div class="sec-body">
+        <div style="display:flex;gap:6px"><button class="btn btn-sm" data-action="filter-all" data-group="type">All</button><button class="btn btn-sm" data-action="filter-none" data-group="type">None</button></div>
+        <div class="legend" id="legend-type"></div>
+      </div>
+    </details>
+
+    <details class="sec" id="sec-relation">
+      <summary><i data-lucide="chevron-right" class="chev"></i>Relationships<span class="tally" id="tally-relation"></span></summary>
+      <div class="sec-body">
+        <div style="display:flex;gap:6px"><button class="btn btn-sm" data-action="filter-all" data-group="relation">All</button><button class="btn btn-sm" data-action="filter-none" data-group="relation">None</button></div>
+        <div class="legend" id="legend-relation"></div>
+        <p class="msg" id="confidence-note" hidden style="margin:0">Dashed lines are relationships whose confidence is not EXTRACTED.</p>
+      </div>
+    </details>
+
+    <details class="sec" open id="sec-layout">
+      <summary><i data-lucide="chevron-right" class="chev"></i>Layout and physics</summary>
+      <div class="sec-body">
+        <label class="field">Layout
+          <select id="layout-mode" class="input">
+            <option value="force">Force (Barnes-Hut)</option>
+            <option value="atlas">Force Atlas 2</option>
+            <option value="repulsion">Repulsion</option>
+            <option value="hier-ud">Hierarchy, top to bottom</option>
+            <option value="hier-lr">Hierarchy, left to right</option>
+          </select>
+        </label>
+        <label class="field">Spacing <input id="layout-spacing" type="range" min="0.5" max="2.5" step="0.1" value="1"></label>
+        <label class="check"><input id="keep-physics" type="checkbox"> Keep physics running</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-sm" data-action="relayout"><i data-lucide="rotate-ccw"></i>Re-run layout</button>
+          <button class="btn btn-sm" data-action="toggle-physics" id="btn-physics"><i data-lucide="pause"></i>Pause physics</button>
+        </div>
+      </div>
+    </details>
+
+    <details class="sec" open id="sec-display">
+      <summary><i data-lucide="chevron-right" class="chev"></i>Display</summary>
+      <div class="sec-body">
+        <label class="field">Labels
+          <select id="label-mode" class="input">
+            <option value="hubs">Hubs and highlights</option>
+            <option value="all">All nodes</option>
+            <option value="none">Only selected</option>
+          </select>
+        </label>
+        <label class="field">Node size <input id="node-scale" type="range" min="0.6" max="2" step="0.1" value="1"></label>
+        <label class="field">Highlight radius around a selected node
+          <select id="hops" class="input"><option value="1">1 hop</option><option value="2">2 hops</option><option value="3">3 hops</option></select>
+        </label>
+        <label class="check"><input id="opt-arrows" type="checkbox" checked> Show arrow heads</label>
+        <label class="check"><input id="opt-curved" type="checkbox"> Curved edges</label>
+        <label class="check"><input id="opt-isolated" type="checkbox"> Hide isolated nodes</label>
+      </div>
+    </details>
+
+    <section class="sec" style="border-bottom:0">
+      <p class="cdn-note" style="margin:0">Everything runs in your browser; the JSON never leaves this page. Tailwind CSS, Lucide and vis-network load from public CDNs, so an internet connection is required.</p>
+    </section>
+  </aside>
+
+  <main class="stage" id="stage">
+    <div id="graph" tabindex="-1" aria-label="Graph canvas"></div>
+
+    <div class="overlay progress" id="progress" hidden><i></i></div>
+
+    <div class="overlay banner" id="sample-banner" hidden>
+      <i data-lucide="info"></i>
+      <span>Built-in sample: an illustrative map of the Niyam layers, not real extraction output. Load <span class="mono">graphify-out/graph.json</span> to explore your own project.</span>
+    </div>
+
+    <div class="overlay zoom-stack" role="group" aria-label="View controls">
+      <button class="icon-btn" data-action="zoom-in" aria-label="Zoom in" title="Zoom in"><i data-lucide="zoom-in"></i></button>
+      <button class="icon-btn" data-action="zoom-out" aria-label="Zoom out" title="Zoom out"><i data-lucide="zoom-out"></i></button>
+      <button class="icon-btn" data-action="fit" aria-label="Fit graph to screen" title="Fit to screen (F)"><i data-lucide="maximize"></i></button>
+      <button class="icon-btn" data-action="reset-view" aria-label="Reset view and selection" title="Reset view"><i data-lucide="rotate-ccw"></i></button>
+    </div>
+
+    <div class="overlay hint" id="hint"><span>Click a node to inspect</span> &middot; drag to pan &middot; scroll to zoom &middot; <kbd>/</kbd> search &middot; <kbd>Esc</kbd> clear</div>
+    <div class="overlay phys status" id="phys"><span class="dot" id="dot-phys"></span><span id="lbl-phys">idle</span></div>
+
+    <div class="overlay card-center" id="empty-state" hidden>
+      <div>
+        <i data-lucide="network" style="width:30px;height:30px;color:var(--cyan)"></i>
+        <h2 id="empty-title">No graph loaded</h2>
+        <p id="empty-text">Load a Graphify JSON file to explore it, or open the built-in sample.</p>
+        <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+          <button class="btn btn-primary" data-action="open-import"><i data-lucide="upload"></i>Load JSON</button>
+          <button class="btn" data-action="load-sample">Open sample</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="overlay card-center" id="lib-error" hidden>
+      <div style="border-color:rgba(251,113,133,.5)">
+        <i data-lucide="triangle-alert" style="width:30px;height:30px;color:var(--rose)"></i>
+        <h2>The graph library did not load</h2>
+        <p>vis-network is loaded from a public CDN, and this page could not reach it. Check your internet connection and reload.</p>
+      </div>
+    </div>
+  </main>
+
+  <aside class="inspector" id="inspector" aria-label="Node inspector">
+    <div class="inspector-inner" id="inspector-body"></div>
+  </aside>
+
+  <div class="scrim-drawer" id="drawer-scrim"></div>
+</div>
+
+<!-- Import dialog -->
+<div class="scrim" id="import-modal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="import-title">
+    <div class="modal-head">
+      <i data-lucide="file-json" style="color:var(--cyan)"></i>
+      <h2 id="import-title">Load Graphify JSON</h2>
+      <button class="icon-btn" data-action="close-import" aria-label="Close"><i data-lucide="x"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" id="tab-upload" data-tab="upload" aria-selected="true"><i data-lucide="upload"></i>Upload file</button>
+        <button class="tab" role="tab" id="tab-paste" data-tab="paste" aria-selected="false"><i data-lucide="clipboard-paste"></i>Paste JSON</button>
+      </div>
+
+      <div id="panel-upload" role="tabpanel" aria-labelledby="tab-upload">
+        <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Choose a Graphify JSON file or drop one here">
+          <i data-lucide="upload"></i>
+          <div><strong>Drop graph.json here</strong> or choose a file</div>
+          <div class="cdn-note">Graphify writes it to <span class="mono">graphify-out/graph.json</span></div>
+        </div>
+        <input type="file" id="file-input" accept=".json,application/json" hidden>
+      </div>
+
+      <div id="panel-paste" role="tabpanel" aria-labelledby="tab-paste" hidden>
+        <label class="field" for="paste-area">Paste the contents of graph.json
+          <textarea id="paste-area" class="input" rows="12" spellcheck="false" placeholder='{ "nodes": [ ... ], "links": [ ... ] }'></textarea>
+        </label>
+        <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+          <button class="btn btn-primary" id="btn-load-paste"><i data-lucide="check"></i>Load graph</button>
+          <button class="btn" id="btn-format"><i data-lucide="braces"></i>Format JSON</button>
+          <button class="btn" id="btn-clear"><i data-lucide="trash-2"></i>Clear</button>
+        </div>
+      </div>
+
+      <p class="msg err" id="import-error" role="alert" hidden></p>
+      <p class="msg" id="import-current"></p>
+      <p class="cdn-note" style="margin:0">Accepted shapes: <span class="mono">{nodes, links|edges}</span>, <span class="mono">{graph:{nodes, ...}}</span> and Cytoscape-style <span class="mono">{elements:{nodes, edges}}</span>. Parsing happens locally in your browser.</p>
+    </div>
+  </div>
+</div>
+
+<div class="drag-veil" id="drag-veil" hidden><span>Drop to load this graph</span></div>
+<div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+'use strict';
+
+/* =====================================================================
+   0. Small helpers
+   ===================================================================== */
+const $ = (sel, root = document) => root.querySelector(sel);
+const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
+const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const MONO = "'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace";
+
+// Builds DOM nodes without ever parsing strings as HTML, so graph data can never inject markup.
+function h(tag, props = {}, ...children) {
+  const el = document.createElement(tag);
+  for (const [key, value] of Object.entries(props || {})) {
+    if (value === undefined || value === null || value === false) continue;
+    if (key === 'class') el.className = value;
+    else if (key === 'text') el.textContent = value;
+    else if (key === 'dataset') Object.assign(el.dataset, value);
+    else if (key.startsWith('on') && typeof value === 'function') el.addEventListener(key.slice(2), value);
+    else el.setAttribute(key, value === true ? '' : String(value));
+  }
+  for (const child of children.flat()) {
+    if (child === undefined || child === null || child === false) continue;
+    el.append(child.nodeType ? child : document.createTextNode(String(child)));
+  }
+  return el;
+}
+const icon = (name) => h('i', { 'data-lucide': name });
+const refreshIcons = () => { try { if (window.lucide) window.lucide.createIcons(); } catch (_) { /* icons are decoration only */ } };
+
+function rgba(hex, alpha) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+}
+function hslToHex(hue, sat, light) {
+  const s = sat / 100, l = light / 100, k = (n) => (n + hue / 30) % 12, a = s * Math.min(l, 1 - l);
+  const f = (n) => Math.round(255 * (l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)))));
+  return '#' + [f(0), f(8), f(4)].map((v) => v.toString(16).padStart(2, '0')).join('');
+}
+
+// Community colours: a hand-picked palette first, then evenly spread hues for graphs with many communities.
+const PALETTE = ['#22d3ee', '#a78bfa', '#2dd4bf', '#fbbf24', '#fb7185', '#38bdf8', '#a3e635', '#fb923c', '#f472b6', '#818cf8', '#34d399', '#facc15'];
+const communityColor = (i) => (i < PALETTE.length ? PALETTE[i] : hslToHex((i * 47 + 20) % 360, 65, 64));
+const AMBER = '#fbbf24', CYAN = '#22d3ee', SLATE = '#94a3b8';
+const UNASSIGNED = 'unassigned', NO_TYPE = '(untyped)', NO_RELATION = '(unlabelled)';
+
+/* =====================================================================
+   1. Notifications
+   ===================================================================== */
+const Notify = {
+  show(message, kind = 'info', ms) {
+    const iconName = { ok: 'check', error: 'triangle-alert', warn: 'triangle-alert', info: 'info' }[kind] || 'info';
+    const toast = h('div', { class: `toast ${kind}` }, icon(iconName), h('span', { text: message }));
+    $('#toasts').append(toast);
+    refreshIcons();
+    setTimeout(() => toast.remove(), ms || (kind === 'error' ? 8000 : 4200));
+  },
+};
+
+/* =====================================================================
+   2. Input parsing, validation and normalisation
+   Graphify output differs by version and export format, so this layer maps the common shapes onto one
+   internal schema. It never invents nodes, edges, files or communities: a missing community stays
+   "unassigned", an edge pointing at a missing node is reported and dropped.
+   ===================================================================== */
+class GraphFormatError extends Error {}
+
+const KEYS = {
+  nodeList: ['nodes', 'vertices'],
+  edgeList: ['edges', 'links', 'relationships'],
+  id: ['id', 'key', 'node_id', 'name', 'label'],
+  label: ['label', 'name', 'title', 'id'],
+  file: ['source_file', 'file', 'path', 'file_path', 'filepath', 'filename'],
+  location: ['source_location', 'location', 'line'],
+  type: ['file_type', 'type', 'kind', 'node_type', 'category'],
+  community: ['community', 'community_id', 'cluster', 'group'],
+  description: ['description', 'summary', 'docstring', 'doc', 'comment'],
+  source: ['source', 'from', 'src', 'u'],
+  target: ['target', 'to', 'dst', 'v'],
+  relation: ['relation', 'relationship', 'type', 'label', 'kind', 'rel'],
+  confidence: ['confidence', 'confidence_score', 'certainty'],
+  weight: ['weight', 'score'],
+};
+
+// Reads the first present key from the item, then from the nested attribute bags some exporters use.
+function lookup(item, keys) {
+  const bags = [item, item.attributes, item.properties, item.metadata, item.data]
+    .filter((bag) => bag && typeof bag === 'object' && !Array.isArray(bag));
+  for (const bag of bags) for (const key of keys) {
+    const value = bag[key];
+    if (value !== undefined && value !== null && value !== '') return value;
+  }
+  return undefined;
+}
+const asText = (value) => (value === undefined || value === null || typeof value === 'object' ? '' : String(value));
+const endpoint = (edge, keys) => {
+  const value = lookup(edge, keys);
+  return value && typeof value === 'object' ? (value.id ?? value.key ?? value.name) : value;
+};
+
+// A collection may be an array or an object keyed by id.
+function toArray(collection) {
+  if (Array.isArray(collection)) return collection;
+  if (collection && typeof collection === 'object') {
+    return Object.entries(collection).map(([key, value]) => (value && typeof value === 'object' ? { id: key, ...value } : { id: key }));
+  }
+  return null;
+}
+function pick(container, keys) {
+  for (const key of keys) {
+    const found = toArray(container[key]);
+    if (found) return found;
+  }
+  return null;
+}
+function locate(raw) {
+  const containers = [raw, raw.graph, raw.data, raw.elements]
+    .filter((c) => c && typeof c === 'object' && !Array.isArray(c));
+  for (const container of containers) {
+    const nodes = pick(container, KEYS.nodeList);
+    if (nodes) return { container, nodes, edges: pick(container, KEYS.edgeList) || [] };
+  }
+  return null;
+}
+
+const compareKeys = (a, b) => {
+  const numeric = /^-?\d+$/;
+  if (numeric.test(a) && numeric.test(b)) return Number(a) - Number(b);
+  return a.localeCompare(b);
+};
+const communityName = (key) => (key === UNASSIGNED ? 'Unassigned' : /^-?\d+$/.test(key) ? `Community ${key}` : key);
+
+function normalizeGraph(raw) {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new GraphFormatError(`Expected a JSON object that contains a node list, but found ${Array.isArray(raw) ? 'an array' : typeof raw}.`);
+  }
+  const found = locate(raw);
+  if (!found) {
+    const keys = Object.keys(raw).slice(0, 12).join(', ') || '(none)';
+    throw new GraphFormatError(`No node list found. Expected "nodes" (or "vertices"), optionally inside "graph" or "elements". Top-level keys in this file: ${keys}.`);
+  }
+
+  const warnings = [];
+  const nodes = [];
+  const byId = new Map();
+  found.nodes.forEach((item, index) => {
+    if (item === null || typeof item !== 'object') throw new GraphFormatError(`Node #${index} is not an object.`);
+    const idValue = lookup(item, KEYS.id);
+    if (idValue === undefined || typeof idValue === 'object') {
+      throw new GraphFormatError(`Node #${index} has no usable id. Looked for: ${KEYS.id.join(', ')}.`);
+    }
+    const id = String(idValue);
+    if (byId.has(id)) { warnings.push(`Duplicate node id "${id}": the first occurrence was kept.`); return; }
+    const community = lookup(item, KEYS.community);
+    const node = {
+      id,
+      label: asText(lookup(item, KEYS.label)) || id,
+      file: asText(lookup(item, KEYS.file)),
+      location: asText(lookup(item, KEYS.location)),
+      type: asText(lookup(item, KEYS.type)) || NO_TYPE,
+      community: community === undefined || typeof community === 'object' ? UNASSIGNED : String(community),
+      description: asText(lookup(item, KEYS.description)),
+      raw: item,
+    };
+    byId.set(id, node);
+    nodes.push(node);
+  });
+  if (warnings.length > 6) warnings.splice(5, warnings.length - 5, `${warnings.length - 5} more duplicate node ids were skipped.`);
+
+  const edges = [];
+  let malformed = 0, dangling = 0;
+  const danglingExamples = [];
+  found.edges.forEach((item, index) => {
+    if (item === null || typeof item !== 'object') { malformed++; return; }
+    const from = endpoint(item, KEYS.source), to = endpoint(item, KEYS.target);
+    if (from === undefined || to === undefined) { malformed++; return; }
+    const f = String(from), t = String(to);
+    if (!byId.has(f) || !byId.has(t)) {
+      dangling++;
+      if (danglingExamples.length < 3) danglingExamples.push(`${f} to ${t}`);
+      return;
+    }
+    edges.push({
+      id: `e${index}`,
+      from: f,
+      to: t,
+      relation: asText(lookup(item, KEYS.relation)) || NO_RELATION,
+      confidence: asText(lookup(item, KEYS.confidence)),
+      weight: Number(lookup(item, KEYS.weight)) || null,
+      raw: item,
+    });
+  });
+  if (malformed) warnings.push(`${malformed} edge(s) had no source or target and were skipped.`);
+  if (dangling) warnings.push(`${dangling} edge(s) point at nodes that do not exist and were skipped (for example ${danglingExamples.join('; ')}).`);
+  if (found.edges.length && !edges.length) {
+    throw new GraphFormatError(`None of the ${found.edges.length} edges could be matched to a node id. Check that edge source/target values equal node ids.`);
+  }
+  if (!nodes.length) warnings.push('The file contains no nodes.');
+
+  const directedFlag = raw.directed ?? found.container.directed;
+  const graph = { nodes, edges, directed: typeof directedFlag === 'boolean' ? directedFlag : true, warnings, byId };
+  return indexGraph(graph);
+}
+
+// Derived data used everywhere else: adjacency, degrees, communities, types, relations, hub threshold.
+function indexGraph(g) {
+  g.out = new Map(g.nodes.map((n) => [n.id, []]));
+  g.in = new Map(g.nodes.map((n) => [n.id, []]));
+  for (const e of g.edges) { g.out.get(e.from).push(e); g.in.get(e.to).push(e); }
+  for (const n of g.nodes) {
+    n.outDegree = g.out.get(n.id).length;
+    n.inDegree = g.in.get(n.id).length;
+    n.degree = n.outDegree + n.inDegree;
+  }
+
+  const tally = (items, keyOf) => {
+    const counts = new Map();
+    for (const item of items) counts.set(keyOf(item), (counts.get(keyOf(item)) || 0) + 1);
+    return counts;
+  };
+  const communityCounts = tally(g.nodes, (n) => n.community);
+  g.communities = [...communityCounts.keys()].sort(compareKeys).map((key, i) => ({ key, name: communityName(key), color: communityColor(i), count: communityCounts.get(key) }));
+  g.communityByKey = new Map(g.communities.map((c) => [c.key, c]));
+  const sortByCount = (counts) => [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([key, count]) => ({ key, name: key, count }));
+  g.types = sortByCount(tally(g.nodes, (n) => n.type));
+  g.relations = sortByCount(tally(g.edges, (e) => e.relation));
+  g.hasConfidence = g.edges.some((e) => e.confidence);
+
+  g.stats = {
+    nodes: g.nodes.length,
+    edges: g.edges.length,
+    communities: g.communities.filter((c) => c.key !== UNASSIGNED).length,
+    isolated: g.nodes.filter((n) => n.degree === 0).length,
+    types: g.types.filter((t) => t.key !== NO_TYPE).length,
+  };
+
+  // Labels are drawn for the most connected ~12% of nodes (at least 3 links) so large graphs stay readable.
+  const degrees = g.nodes.map((n) => n.degree).sort((a, b) => b - a);
+  g.hubCut = Math.max(3, degrees[Math.floor(g.nodes.length * 0.12)] ?? 0);
+  for (const n of g.nodes) {
+    n.haystack = [n.label, n.id, n.file, n.type, communityName(n.community), n.description].join(' ').toLowerCase();
+  }
+  return g;
+}
+
+function parseGraphText(text) {
+  const clean = text.replace(/^﻿/, '').trim();
+  if (!clean) throw new GraphFormatError('The input is empty.');
+  let raw;
+  try { raw = JSON.parse(clean); }
+  catch (error) { throw new GraphFormatError(`This is not valid JSON: ${error.message}`); }
+  return normalizeGraph(raw);
+}
+
+/* =====================================================================
+   3. Built-in sample (an illustrative map of the Niyam layers)
+   ===================================================================== */
+const SAMPLE = (() => {
+  const N = (id, label, type, file, community, description) => ({ id, label, file_type: type, source_file: file, community, description });
+  const nodes = [
+    N('app', 'app.py', 'module', 'src/niyam/api/app.py', 0, 'FastAPI application factory with the health and readiness routes.'),
+    N('create_app', 'create_app()', 'function', 'src/niyam/api/app.py', 0, 'Builds the application and wires the database check in.'),
+    N('health', 'health()', 'function', 'src/niyam/api/app.py', 0, 'Liveness route. Always returns 200 while the process is up.'),
+    N('ready', 'ready()', 'function', 'src/niyam/api/app.py', 0, 'Readiness route. Returns 503 when the database is down.'),
+    N('HealthResponse', 'HealthResponse', 'class', 'src/niyam/api/app.py', 0, 'Response model for /health.'),
+    N('ReadinessResponse', 'ReadinessResponse', 'class', 'src/niyam/api/app.py', 0, 'Response model for /ready.'),
+    N('get_engine', '_get_engine()', 'function', 'src/niyam/api/app.py', 0, 'Creates the database engine once and reuses it.'),
+    N('default_check', '_default_database_check()', 'function', 'src/niyam/api/app.py', 0, 'Default readiness check used outside tests.'),
+    N('fastapi', 'fastapi', 'external', '', 0, 'Third-party web framework.'),
+    N('config', 'config.py', 'module', 'src/niyam/core/config.py', 1, 'Application settings loaded from environment variables.'),
+    N('Settings', 'Settings', 'class', 'src/niyam/core/config.py', 1, 'One source of truth for configuration.'),
+    N('pydantic', 'pydantic-settings', 'external', '', 1, 'Third-party settings library.'),
+    N('engine', 'engine.py', 'module', 'src/niyam/db/engine.py', 2, 'Database engine construction and health check.'),
+    N('build_url', 'build_database_url()', 'function', 'src/niyam/db/engine.py', 2, 'Builds the connection URL from settings.'),
+    N('create_engine', 'create_db_engine()', 'function', 'src/niyam/db/engine.py', 2, 'Creates an engine with a connect timeout.'),
+    N('check_db', 'check_database()', 'function', 'src/niyam/db/engine.py', 2, 'Runs SELECT 1 and returns True or False.'),
+    N('PasswordMissing', 'DatabasePasswordMissingError', 'class', 'src/niyam/db/engine.py', 2, 'Raised when no database password is configured.'),
+    N('sqlalchemy', 'sqlalchemy', 'external', '', 2, 'Third-party ORM and SQL toolkit.'),
+    N('models', 'models.py', 'module', 'src/niyam/db/models.py', 3, 'Table definitions for documents and chunks.'),
+    N('Base', 'Base', 'class', 'src/niyam/db/models.py', 3, 'Declarative base with the constraint naming convention.'),
+    N('Document', 'Document', 'class', 'src/niyam/db/models.py', 3, 'One row per circular.'),
+    N('Chunk', 'Chunk', 'class', 'src/niyam/db/models.py', 3, 'One row per passage, with embedding and search text.'),
+    N('factory', 'factory.py', 'module', 'src/niyam/llm/factory.py', 4, 'Builds the chat model from configuration.'),
+    N('build_chat', 'build_chat_model()', 'function', 'src/niyam/llm/factory.py', 4, 'Thin wrapper over LangChain init_chat_model.'),
+    N('NotConfigured', 'ModelNotConfiguredError', 'class', 'src/niyam/llm/factory.py', 4, 'Raised when no model name is configured.'),
+    N('langchain', 'langchain', 'external', '', 4, 'Third-party LLM framework.'),
+    N('logging', 'logging_config.py', 'module', 'src/niyam/core/logging_config.py', 5, 'Structured logging setup.'),
+    N('configure_logging', 'configure_logging()', 'function', 'src/niyam/core/logging_config.py', 5, 'Configures structlog for the whole application.'),
+    N('structlog', 'structlog', 'external', '', 5, 'Third-party structured logging library.'),
+    N('main', 'main()', 'function', 'src/niyam/__init__.py', 6, 'Package entry point. Nothing else references it.'),
+  ];
+  const links = [];
+  const L = (source, target, relation, confidence = 'EXTRACTED') => links.push({ source, target, relation, confidence });
+  [['app', ['create_app', 'health', 'ready', 'HealthResponse', 'ReadinessResponse', 'get_engine', 'default_check']],
+   ['config', ['Settings']], ['engine', ['build_url', 'create_engine', 'check_db', 'PasswordMissing']],
+   ['models', ['Base', 'Document', 'Chunk']], ['factory', ['build_chat', 'NotConfigured']], ['logging', ['configure_logging']]]
+    .forEach(([module, members]) => members.forEach((member) => L(module, member, 'contains')));
+  L('app', 'fastapi', 'imports'); L('app', 'engine', 'imports'); L('app', 'config', 'imports');
+  L('config', 'pydantic', 'imports'); L('engine', 'config', 'imports'); L('engine', 'sqlalchemy', 'imports');
+  L('models', 'sqlalchemy', 'imports'); L('factory', 'config', 'imports'); L('factory', 'langchain', 'imports'); L('logging', 'structlog', 'imports');
+  L('create_app', 'health', 'registers'); L('create_app', 'ready', 'registers'); L('create_app', 'default_check', 'calls');
+  L('default_check', 'get_engine', 'calls'); L('default_check', 'check_db', 'calls'); L('get_engine', 'create_engine', 'calls');
+  L('create_engine', 'build_url', 'calls'); L('get_engine', 'Settings', 'uses'); L('build_url', 'Settings', 'uses');
+  L('build_chat', 'Settings', 'uses'); L('configure_logging', 'Settings', 'uses', 'INFERRED');
+  L('health', 'HealthResponse', 'uses'); L('ready', 'ReadinessResponse', 'uses');
+  L('build_url', 'PasswordMissing', 'raises'); L('default_check', 'PasswordMissing', 'catches', 'INFERRED'); L('build_chat', 'NotConfigured', 'raises');
+  L('Document', 'Base', 'extends'); L('Chunk', 'Base', 'extends'); L('Document', 'Chunk', 'has_many', 'INFERRED');
+  return { directed: true, multigraph: false, graph: { name: 'niyam sample' }, nodes, links };
+})();
+
+/* =====================================================================
+   4. State
+   ===================================================================== */
+const state = {
+  graph: null,
+  fileName: '',
+  isSample: false,
+  hidden: { community: new Set(), type: new Set(), relation: new Set() },
+  hideIsolated: false,
+  query: '',
+  matches: null,                 // Set of node ids matching the search, or null when no search is active
+  selectedId: null,
+  hops: 1,
+  path: { toId: null, nodes: [], edges: [], ignoreDirection: true, message: '', failed: false },
+  display: { labels: 'hubs', arrows: true, curved: false, nodeScale: 1 },
+  layout: { mode: 'force', spacing: 1, keepPhysics: false, physicsOn: true },
+};
+
+const isFilteredOut = (n) =>
+  state.hidden.community.has(n.community) || state.hidden.type.has(n.type) || (state.hideIsolated && n.degree === 0);
+
+// Nodes within `hops` links of the start node, ignoring edge direction.
+function neighborhood(startId, hops) {
+  const g = state.graph;
+  const seen = new Set([startId]);
+  let frontier = [startId];
+  for (let step = 0; step < hops; step++) {
+    const next = [];
+    for (const id of frontier) {
+      for (const e of g.out.get(id)) if (!seen.has(e.to)) { seen.add(e.to); next.push(e.to); }
+      for (const e of g.in.get(id)) if (!seen.has(e.from)) { seen.add(e.from); next.push(e.from); }
+    }
+    frontier = next;
+  }
+  return seen;
+}
+
+// Breadth-first search finds a path with the fewest links.
+function shortestPath(g, fromId, toId, ignoreDirection) {
+  if (fromId === toId) return { nodes: [fromId], edges: [] };
+  const previous = new Map([[fromId, null]]);
+  const queue = [fromId];
+  for (let i = 0; i < queue.length; i++) {
+    const current = queue[i];
+    const steps = g.out.get(current).map((e) => [e, e.to]);
+    if (ignoreDirection) g.in.get(current).forEach((e) => steps.push([e, e.from]));
+    for (const [edge, next] of steps) {
+      if (previous.has(next)) continue;
+      previous.set(next, { id: current, edge });
+      if (next === toId) {
+        const nodes = [], edges = [];
+        for (let at = toId; at !== null; ) {
+          nodes.unshift(at);
+          const link = previous.get(at);
+          if (link) edges.unshift(link.edge);
+          at = link ? link.id : null;
+        }
+        return { nodes, edges };
+      }
+      queue.push(next);
+    }
+  }
+  return null;
+}
+
+/* =====================================================================
+   5. Visual state: pure functions that turn state into vis-network styling
+   ===================================================================== */
+function computeView() {
+  const g = state.graph;
+  const sel = state.selectedId;
+  const view = {
+    sel,
+    nb: sel ? neighborhood(sel, state.hops) : null,
+    match: state.matches,
+    pathNodes: new Set(state.path.nodes),
+    pathEdges: new Set(state.path.edges.map((e) => e.id)),
+    ns: new Map(),
+  };
+  const pathActive = view.pathNodes.size > 0;
+  for (const n of g.nodes) {
+    const onPath = view.pathNodes.has(n.id), isSel = sel === n.id;
+    let dim;
+    if (pathActive) dim = !onPath;
+    else dim = (view.match && !view.match.has(n.id)) || (view.nb && !view.nb.has(n.id)) || false;
+    if (isSel) dim = false;
+    // Path and selected nodes stay visible even when a filter would hide them.
+    view.ns.set(n.id, { onPath, isSel, dim, hidden: isFilteredOut(n) && !onPath && !isSel });
+  }
+  return view;
+}
+
+function nodeItem(n, view) {
+  const g = state.graph, s = view.ns.get(n.id);
+  const base = g.communityByKey.get(n.community).color;
+  const mode = state.display.labels;
+  const emphasised = s.onPath || s.isSel || (view.match && view.match.has(n.id)) || (view.sel && view.nb.has(n.id));
+  const showLabel = mode === 'all' ? true : mode === 'hubs' ? (n.degree >= g.hubCut || emphasised) : emphasised;
+  const text = n.label.length > 30 ? `${n.label.slice(0, 29)}…` : n.label;
+  return {
+    id: n.id,
+    label: showLabel ? text : '',
+    title: n.file ? `${n.label}\n${n.file}` : n.label,
+    hidden: s.hidden,
+    size: Math.min(38, 8 + Math.sqrt(n.degree) * 3.6) * state.display.nodeScale + (s.isSel ? 4 : 0),
+    borderWidth: s.isSel || s.onPath ? 3 : 1.5,
+    color: {
+      background: s.dim ? rgba(base, 0.14) : base,
+      border: s.onPath ? AMBER : s.isSel ? '#f8fafc' : rgba(base, s.dim ? 0.22 : 0.95),
+      highlight: { background: base, border: '#f8fafc' },
+      hover: { background: base, border: '#f8fafc' },
+    },
+    font: { face: MONO, size: s.isSel ? 14 : 12, color: s.dim ? 'rgba(226,232,240,0.3)' : '#e2e8f0', strokeWidth: 4, strokeColor: '#020617' },
+  };
+}
+
+function edgeItem(e, view) {
+  const g = state.graph, a = view.ns.get(e.from), b = view.ns.get(e.to);
+  const inPath = view.pathEdges.has(e.id);
+  const touchesSelection = view.sel && (e.from === view.sel || e.to === view.sel);
+  const dim = view.pathNodes.size ? !inPath : (a.dim || b.dim);
+  const inferred = e.confidence && !/^extracted$/i.test(e.confidence);
+  const color = inPath ? AMBER : touchesSelection ? rgba(CYAN, 0.9) : dim ? rgba(SLATE, 0.06) : rgba(SLATE, 0.3);
+  return {
+    id: e.id,
+    hidden: state.hidden.relation.has(e.relation) || a.hidden || b.hidden,
+    width: inPath ? 3 : touchesSelection ? 1.8 : 1,
+    dashes: inferred ? [5, 5] : false,
+    color: { color, highlight: CYAN, hover: CYAN, inherit: false },
+    arrows: { to: { enabled: g.directed && state.display.arrows, scaleFactor: 0.45 } },
+    smooth: state.display.curved ? { enabled: true, type: 'curvedCW', roundness: 0.18 } : { enabled: false },
+    title: `${g.byId.get(e.from).label}  ${e.relation}  ${g.byId.get(e.to).label}${e.confidence ? `\n${e.confidence}` : ''}`,
+  };
+}
+
+/* =====================================================================
+   6. Visualisation (vis-network). The network is created once; loading a graph only swaps the data.
+   ===================================================================== */
+function layoutOptions(mode, spacing, nodeCount) {
+  const stabilization = { enabled: true, iterations: nodeCount > 800 ? 120 : 260, updateInterval: 20, fit: true };
+  const flat = { layout: { hierarchical: { enabled: false } } };
+  switch (mode) {
+    case 'atlas':
+      return { ...flat, physics: { enabled: true, solver: 'forceAtlas2Based', stabilization,
+        forceAtlas2Based: { gravitationalConstant: -60 * spacing, centralGravity: 0.012, springLength: 110 * spacing, springConstant: 0.08, damping: 0.4, avoidOverlap: 0.4 } } };
+    case 'repulsion':
+      return { ...flat, physics: { enabled: true, solver: 'repulsion', stabilization,
+        repulsion: { nodeDistance: 140 * spacing, centralGravity: 0.15, springLength: 140 * spacing, springConstant: 0.05, damping: 0.12 } } };
+    case 'hier-ud':
+    case 'hier-lr':
+      return { physics: { enabled: false }, layout: { hierarchical: {
+        enabled: true, direction: mode === 'hier-ud' ? 'UD' : 'LR', sortMethod: 'directed', shakeTowards: 'roots',
+        nodeSpacing: 110 * spacing, levelSeparation: 150 * spacing, treeSpacing: 160 * spacing } } };
+    default:
+      return { ...flat, physics: { enabled: true, solver: 'barnesHut', stabilization,
+        barnesHut: { gravitationalConstant: -6500 * spacing, centralGravity: 0.25, springLength: 120 * spacing, springConstant: 0.04, damping: 0.35, avoidOverlap: 0.2 } } };
+  }
+}
+
+const Viz = {
+  network: null, nodes: null, edges: null, pendingFit: false, refreshQueued: false,
+
+  init() {
+    if (typeof vis === 'undefined') { $('#lib-error').hidden = false; return false; }
+    this.nodes = new vis.DataSet();
+    this.edges = new vis.DataSet();
+    this.network = new vis.Network($('#graph'), { nodes: this.nodes, edges: this.edges }, {
+      autoResize: true,
+      nodes: { shape: 'dot', shadow: false },
+      edges: { smooth: false, selectionWidth: 1.5 },
+      layout: { improvedLayout: false },
+      interaction: { hover: true, tooltipDelay: 250, hideEdgesOnDrag: true, zoomView: true, dragView: true },
+      physics: layoutOptions('force', 1, 0).physics,
+    });
+    // Events are bound exactly once here, so loading a new graph never stacks listeners.
+    this.network.on('click', (p) => {
+      if (p.nodes.length) Selection.select(p.nodes[0]);
+      else if (!p.edges.length) Selection.clear();
+    });
+    this.network.on('doubleClick', (p) => { if (p.nodes.length) this.focus(p.nodes[0]); });
+    this.network.on('stabilizationProgress', (p) => UI.setPhysics('busy', `stabilizing ${Math.round((p.iterations / p.total) * 100)}%`, p.iterations / p.total));
+    this.network.on('stabilizationIterationsDone', () => this.onSettled());
+    return true;
+  },
+
+  load(g) {
+    if (!this.network) return;
+    this.nodes.clear(); this.edges.clear();
+    if (!g.nodes.length) { UI.setPhysics('idle', 'empty', 0); return; }
+    const view = computeView();
+    this.nodes.add(g.nodes.map((n) => nodeItem(n, view)));
+    this.edges.add(g.edges.map((e) => edgeItem(e, view)));
+    this.applyLayout(true);
+  },
+
+  applyLayout(fitAfter) {
+    if (!this.network || !state.graph || !state.graph.nodes.length) return;
+    const { mode, spacing } = state.layout;
+    this.network.setOptions(layoutOptions(mode, spacing, state.graph.nodes.length));
+    this.pendingFit = !!fitAfter;
+    if (mode.startsWith('hier')) {
+      UI.setPhysics('idle', 'static layout', 0);
+      state.layout.physicsOn = false; UI.syncPhysicsButton();
+      setTimeout(() => this.fit(), 80);
+    } else {
+      state.layout.physicsOn = true; UI.syncPhysicsButton();
+      UI.setPhysics('busy', 'stabilizing 0%', 0);
+      this.network.stabilize(state.graph.nodes.length > 800 ? 120 : 260);
+    }
+  },
+
+  // Once the layout settles, stop the simulation (cheap to render, nodes stay put) unless the user asked to keep it running.
+  onSettled() {
+    if (!state.layout.keepPhysics) {
+      this.network.setOptions({ physics: { enabled: false } });
+      state.layout.physicsOn = false;
+      UI.setPhysics('ok', 'settled', 0);
+    } else {
+      UI.setPhysics('busy', 'physics running', 0);
+    }
+    UI.syncPhysicsButton();
+    if (this.pendingFit) { this.pendingFit = false; this.fit(); }
+  },
+
+  setPhysicsEnabled(on) {
+    if (!this.network) return;
+    this.network.setOptions({ physics: { enabled: on } });
+    state.layout.physicsOn = on;
+    UI.setPhysics(on ? 'busy' : 'idle', on ? 'physics running' : 'paused', 0);
+    UI.syncPhysicsButton();
+  },
+
+  // Restyle in place; coalesce bursts (typing in search, dragging sliders) into one update per frame.
+  scheduleRefresh() {
+    if (this.refreshQueued) return;
+    this.refreshQueued = true;
+    requestAnimationFrame(() => { this.refreshQueued = false; this.refresh(); });
+  },
+  refresh() {
+    if (!this.network || !state.graph) return;
+    const view = computeView();
+    this.nodes.update(state.graph.nodes.map((n) => nodeItem(n, view)));
+    this.edges.update(state.graph.edges.map((e) => edgeItem(e, view)));
+  },
+
+  fit() { if (this.network) this.network.fit({ animation: REDUCED_MOTION ? false : { duration: 450, easingFunction: 'easeInOutQuad' } }); },
+  focus(id) {
+    if (!this.network || !this.nodes.get(id)) return;
+    this.network.focus(id, { scale: Math.max(this.network.getScale(), 1.1), animation: REDUCED_MOTION ? false : { duration: 420, easingFunction: 'easeInOutQuad' } });
+  },
+  zoom(factor) {
+    if (this.network) this.network.moveTo({ scale: this.network.getScale() * factor, animation: REDUCED_MOTION ? false : { duration: 200 } });
+  },
+};
+
+/* =====================================================================
+   7. Selection, search, path finding
+   ===================================================================== */
+const Selection = {
+  select(id, { focus = false } = {}) {
+    const g = state.graph;
+    if (!g || !g.byId.has(id)) return;
+    if (state.selectedId !== id) PathFinder.reset();
+    state.selectedId = id;
+    if (Viz.network) Viz.network.selectNodes([id]);
+    Inspector.render();
+    UI.setDrawer('inspector', true);
+    if (focus) Viz.focus(id);
+    Viz.scheduleRefresh();
+  },
+  clear() {
+    if (!state.selectedId && !state.path.nodes.length) return;
+    state.selectedId = null;
+    PathFinder.reset();
+    if (Viz.network) Viz.network.unselectAll();
+    UI.setDrawer('inspector', false);
+    Viz.scheduleRefresh();
+  },
+};
+
+const Search = {
+  find(query, limit = 8) {
+    if (!state.graph) return [];
+    const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
+    if (!tokens.length) return [];
+    const hits = [];
+    for (const n of state.graph.nodes) {
+      if (tokens.every((t) => n.haystack.includes(t))) { hits.push(n); if (hits.length >= limit) break; }
+    }
+    return hits;
+  },
+  // Dims everything that does not match while the user types.
+  apply(query) {
+    state.query = query.trim();
+    if (!state.query || !state.graph) state.matches = null;
+    else {
+      const tokens = state.query.toLowerCase().split(/\s+/).filter(Boolean);
+      state.matches = new Set(state.graph.nodes.filter((n) => tokens.every((t) => n.haystack.includes(t))).map((n) => n.id));
+    }
+    Viz.scheduleRefresh();
+  },
+};
+
+const PathFinder = {
+  reset() { state.path = { ...state.path, toId: null, nodes: [], edges: [], message: '', failed: false }; Inspector.renderPath(); },
+  run(toId) {
+    const g = state.graph, fromId = state.selectedId;
+    if (!g || !fromId || !g.byId.has(toId)) return;
+    const result = shortestPath(g, fromId, toId, state.path.ignoreDirection);
+    state.path.toId = toId;
+    if (result) {
+      state.path.nodes = result.nodes; state.path.edges = result.edges; state.path.failed = false;
+      state.path.message = result.edges.length ? `${result.edges.length} link${result.edges.length === 1 ? '' : 's'} between these nodes.` : 'This is the same node.';
+    } else {
+      state.path.nodes = []; state.path.edges = []; state.path.failed = true;
+      state.path.message = state.path.ignoreDirection
+        ? 'These nodes are not connected by any chain of links.'
+        : 'No path follows the arrow directions. Tick "Ignore link direction" to search both ways.';
+    }
+    Inspector.renderPath();
+    Viz.scheduleRefresh();
+    if (result && result.nodes.length > 1 && Viz.network) {
+      Viz.network.fit({ nodes: result.nodes, animation: REDUCED_MOTION ? false : { duration: 450 } });
+    }
+  },
+};
+
+// Dropdown of matching nodes under a text input. Used by the search boxes and the path target field.
+function attachPicker(input, list, { onPick, onType }) {
+  let items = [], active = -1;
+  const close = () => { list.hidden = true; active = -1; input.setAttribute('aria-expanded', 'false'); };
+  const choose = (node) => { close(); onPick(node); };
+  const render = () => {
+    list.replaceChildren(...items.map((n, i) => h('li', {
+      role: 'option', class: `pick${i === active ? ' active' : ''}`, 'aria-selected': String(i === active),
+      onmousedown: (event) => { event.preventDefault(); choose(n); },
+    }, h('span', { class: 'pick-label', text: n.label }), h('span', { class: 'pick-sub', text: [n.type, n.file].filter(Boolean).join('  ·  ') }))));
+    list.hidden = !items.length;
+    input.setAttribute('aria-expanded', String(!list.hidden));
+  };
+  input.addEventListener('input', () => {
+    const q = input.value.trim();
+    if (onType) onType(q);
+    items = q ? Search.find(q) : [];
+    active = items.length ? 0 : -1;
+    render();
+  });
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'ArrowDown' && items.length) { event.preventDefault(); active = (active + 1) % items.length; render(); }
+    else if (event.key === 'ArrowUp' && items.length) { event.preventDefault(); active = (active - 1 + items.length) % items.length; render(); }
+    else if (event.key === 'Enter' && active >= 0) { event.preventDefault(); choose(items[active]); }
+    else if (event.key === 'Escape' && !list.hidden) { event.stopPropagation(); close(); }
+  });
+  input.addEventListener('blur', () => setTimeout(close, 120));
+  return { close };
+}
+
+/* =====================================================================
+   8. Inspector drawer
+   ===================================================================== */
+const Inspector = {
+  render() {
+    const g = state.graph, n = g && g.byId.get(state.selectedId);
+    const root = $('#inspector-body');
+    if (!n) { root.replaceChildren(); return; }
+    const community = g.communityByKey.get(n.community);
+    const linkList = (edges, direction) => {
+      const sorted = [...edges].sort((a, b) => a.relation.localeCompare(b.relation));
+      const shown = sorted.slice(0, 40);
+      return h('div', { class: 'links' },
+        shown.map((e) => {
+          const other = g.byId.get(direction === 'out' ? e.to : e.from);
+          return h('button', { class: 'link-row', type: 'button', title: other.label, onclick: () => Selection.select(other.id, { focus: true }) },
+            h('span', { class: 'rel', text: e.relation }), h('span', { class: 'who', text: other.label }));
+        }),
+        sorted.length > shown.length ? h('div', { class: 'msg', text: `and ${sorted.length - shown.length} more` }) : null);
+    };
+    const outgoing = g.out.get(n.id), incoming = g.in.get(n.id);
+
+    const pathInput = h('input', { id: 'path-target', class: 'input', type: 'text', placeholder: 'Search for the target node', autocomplete: 'off',
+      role: 'combobox', 'aria-expanded': 'false', 'aria-controls': 'picklist-path', 'aria-label': 'Path target node' });
+    const pathList = h('ul', { id: 'picklist-path', class: 'picklist', role: 'listbox', hidden: true });
+    attachPicker(pathInput, pathList, { onPick: (target) => { pathInput.value = target.label; PathFinder.run(target.id); } });
+    const ignoreBox = h('input', { type: 'checkbox', id: 'path-ignore', checked: state.path.ignoreDirection,
+      onchange: (event) => { state.path.ignoreDirection = event.target.checked; if (state.path.toId) PathFinder.run(state.path.toId); } });
+    if (!state.path.ignoreDirection) ignoreBox.removeAttribute('checked');
+
+    root.replaceChildren(
+      h('div', { class: 'insp-head' },
+        h('div', { style: 'flex:1;min-width:0' },
+          h('h2', { class: 'insp-title', text: n.label }),
+          h('div', { class: 'chips' },
+            h('span', { class: 'chip', text: n.type }),
+            h('span', { class: 'chip' }, h('span', { class: 'swatch', style: `background:${community.color}` }), community.name))),
+        h('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Close inspector', onclick: () => Selection.clear() }, icon('x'))),
+      h('section', { class: 'sec' },
+        h('dl', { class: 'kv' },
+          h('dt', { text: 'Id' }), h('dd', { class: 'mono', text: n.id }),
+          n.file ? [h('dt', { text: 'File' }), h('dd', { class: 'mono', text: n.location ? `${n.file}:${n.location}` : n.file })] : null,
+          n.description ? [h('dt', { text: 'About' }), h('dd', { text: n.description })] : null,
+          h('dt', { text: 'Links' }), h('dd', { class: 'mono', text: `${n.outDegree} out, ${n.inDegree} in` }))),
+      h('section', { class: 'sec' },
+        h('div', { class: 'sec-title', text: `Outgoing (${outgoing.length})` }),
+        outgoing.length ? linkList(outgoing, 'out') : h('p', { class: 'msg', text: 'Nothing depends on this node going outward.' }),
+        h('div', { class: 'sec-title', style: 'margin-top:16px', text: `Incoming (${incoming.length})` }),
+        incoming.length ? linkList(incoming, 'in') : h('p', { class: 'msg', text: 'No other node points at this one.' })),
+      h('section', { class: 'sec' },
+        h('div', { class: 'sec-title', text: 'Trace a path' }),
+        h('p', { class: 'msg', style: 'margin:6px 0 10px', text: `Find the shortest chain of links from ${n.label} to another node.` }),
+        h('div', { style: 'position:relative' }, pathInput, pathList),
+        h('label', { class: 'check', style: 'margin-top:10px' }, ignoreBox, 'Ignore link direction'),
+        h('div', { id: 'path-result' })),
+      h('section', { class: 'sec', style: 'border-bottom:0' },
+        h('details', {}, h('summary', { class: 'sec-title', style: 'cursor:pointer', text: 'Raw metadata' }),
+          h('pre', { class: 'raw', text: JSON.stringify(n.raw, null, 2).slice(0, 6000) }))));
+    this.renderPath();
+    refreshIcons();
+  },
+
+  renderPath() {
+    const host = $('#path-result');
+    if (!host) return;
+    const g = state.graph, p = state.path;
+    if (!p.message) { host.replaceChildren(); return; }
+    const steps = [];
+    p.nodes.forEach((id, i) => {
+      const n = g.byId.get(id);
+      steps.push(h('li', {}, h('div', { class: 'path-node' }, h('span', { class: 'swatch', style: `background:${g.communityByKey.get(n.community).color}` }), h('span', { text: n.label, title: n.label }))));
+      const edge = p.edges[i];
+      if (edge) {
+        const forward = edge.from === id;
+        steps.push(h('li', {}, h('div', { class: 'path-edge', text: forward ? `${edge.relation}  ↓` : `↑  ${edge.relation}` })));
+      }
+    });
+    host.replaceChildren(
+      h('p', { class: `msg${p.failed ? ' err' : ''}`, text: p.message }),
+      steps.length ? h('ol', { class: 'path-steps' }, steps) : null,
+      h('button', { class: 'btn btn-sm', type: 'button', style: 'margin-top:10px', onclick: () => { const input = $('#path-target'); if (input) input.value = ''; PathFinder.reset(); Viz.scheduleRefresh(); } }, 'Clear path'));
+  },
+};
+
+/* =====================================================================
+   9. Interface: stats, filters, drawers, status
+   ===================================================================== */
+const UI = {
+  renderAll() {
+    const g = state.graph;
+    $('#hdr-file').textContent = state.fileName || 'no graph';
+    $('#side-file').textContent = state.fileName || 'no graph';
+    $('#hdr-counts').replaceChildren(h('b', { text: g.stats.nodes }), ' nodes · ', h('b', { text: g.stats.edges }), ' edges');
+    $('#st-nodes').textContent = g.stats.nodes;
+    $('#st-edges').textContent = g.stats.edges;
+    $('#st-comm').textContent = g.stats.communities || '—';
+    $('#st-iso').textContent = g.stats.isolated;
+    $('#st-types').textContent = g.stats.types || '—';
+    this.renderVisible();
+
+    const warnings = $('#warnings');
+    warnings.hidden = !g.warnings.length;
+    $('#warn-count').textContent = `${g.warnings.length} warning${g.warnings.length === 1 ? '' : 's'} while reading this file`;
+    $('#warn-list').replaceChildren(...g.warnings.map((w) => h('li', { text: w })));
+
+    this.renderLegend('community', g.communities, true);
+    this.renderLegend('type', g.types, false);
+    this.renderLegend('relation', g.relations, false);
+    $('#confidence-note').hidden = !g.hasConfidence;
+
+    $('#sample-banner').hidden = !state.isSample;
+    const empty = !g.nodes.length;
+    $('#empty-state').hidden = !empty;
+    if (empty) { $('#empty-title').textContent = 'This graph has no nodes'; $('#empty-text').textContent = 'The file parsed correctly but its node list is empty. Load another file or open the sample.'; }
+    $('#import-current').textContent = `Current graph: ${state.fileName} (${g.stats.nodes} nodes, ${g.stats.edges} edges, ${g.stats.communities} communities).`;
+    refreshIcons();
+  },
+
+  renderVisible() {
+    const g = state.graph;
+    if (!g) return;
+    const visible = g.nodes.filter((n) => !isFilteredOut(n)).length;
+    $('#st-visible').textContent = visible === g.nodes.length ? 'all' : `${visible}`;
+    for (const group of ['community', 'type', 'relation']) {
+      const total = group === 'community' ? g.communities.length : group === 'type' ? g.types.length : g.relations.length;
+      const hiddenCount = state.hidden[group].size;
+      $(`#tally-${group}`).textContent = hiddenCount ? `${total - hiddenCount}/${total}` : `${total}`;
+    }
+  },
+
+  // Rows carry data-group / data-key; one delegated listener on the sidebar handles every checkbox,
+  // so re-rendering after a new graph never accumulates handlers.
+  renderLegend(group, items, withSwatch) {
+    $(`#legend-${group}`).replaceChildren(...items.map((item) => h('label', { class: 'legend-row' },
+      h('input', { type: 'checkbox', checked: true, dataset: { group, key: item.key }, 'aria-label': item.name }),
+      withSwatch ? h('span', { class: 'swatch', style: `background:${item.color}` }) : null,
+      h('span', { class: 'name', text: item.name, title: item.name }),
+      h('span', { class: 'count', text: item.count }))));
+  },
+
+  setDrawer(which, open) {
+    const app = $('#app');
+    if (which === 'inspector') app.dataset.inspector = open ? 'open' : 'closed';
+    else app.dataset.sidebar = open ? 'open' : 'closed';
+    if (open && window.matchMedia('(max-width: 1023px)').matches) {
+      app.dataset[which === 'inspector' ? 'sidebar' : 'inspector'] = 'closed';
+    }
+  },
+
+  setPhysics(kind, text, progress) {
+    $('#dot-phys').className = `dot ${kind === 'busy' ? 'busy' : kind === 'ok' ? 'ok' : ''}`;
+    $('#lbl-phys').textContent = text;
+    const bar = $('#progress');
+    bar.hidden = !(kind === 'busy' && progress > 0 && progress < 1);
+    $('#progress > i').style.width = `${Math.round(progress * 100)}%`;
+  },
+  syncPhysicsButton() {
+    const button = $('#btn-physics');
+    const on = state.layout.physicsOn;
+    button.replaceChildren(icon(on ? 'pause' : 'play'), on ? 'Pause physics' : 'Resume physics');
+    button.disabled = state.layout.mode.startsWith('hier');
+    refreshIcons();
+  },
+};
+
+/* =====================================================================
+   10. Loading graphs
+   ===================================================================== */
+const Store = {
+  setGraph(graph, fileName, isSample) {
+    state.graph = graph;
+    state.fileName = fileName;
+    state.isSample = isSample;
+    state.hidden = { community: new Set(), type: new Set(), relation: new Set() };
+    state.query = ''; state.matches = null; state.selectedId = null;
+    state.path = { ...state.path, toId: null, nodes: [], edges: [], message: '', failed: false };
+    $('#search-top').value = ''; $('#search-side').value = '';
+    $('#inspector-body').replaceChildren();
+    UI.setDrawer('inspector', false);
+    UI.renderAll();
+    Viz.load(graph);
+  },
+};
+
+const Importer = {
+  open(tab = 'upload') {
+    $('#import-modal').hidden = false;
+    this.setTab(tab);
+    this.error('');
+    setTimeout(() => (tab === 'paste' ? $('#paste-area') : $('#dropzone')).focus(), 30);
+  },
+  close() { $('#import-modal').hidden = true; },
+  setTab(tab) {
+    for (const name of ['upload', 'paste']) {
+      $(`#panel-${name}`).hidden = name !== tab;
+      $(`#tab-${name}`).setAttribute('aria-selected', String(name === tab));
+    }
+  },
+  error(message) { const el = $('#import-error'); el.textContent = message; el.hidden = !message; },
+  load(text, name) {
+    try {
+      const graph = parseGraphText(text);
+      Store.setGraph(graph, name, false);
+      this.close();
+      Notify.show(`Loaded ${name}: ${graph.stats.nodes} nodes, ${graph.stats.edges} edges.`, 'ok');
+      if (graph.warnings.length) Notify.show(`${graph.warnings.length} warning(s). See the Graph section.`, 'warn');
+    } catch (error) {
+      const message = error instanceof GraphFormatError ? error.message : `Could not read this graph: ${error.message}`;
+      this.error(message);
+      Notify.show(message, 'error');
+    }
+  },
+  async fromFile(file) {
+    if (!file) return;
+    if (file.size > 60 * 1024 * 1024) Notify.show('This file is large; parsing may take a few seconds.', 'warn');
+    try { this.load(await file.text(), file.name); }
+    catch (error) { this.error(`Could not read the file: ${error.message}`); }
+  },
+  loadSample() {
+    Store.setGraph(normalizeGraph(SAMPLE), 'sample-niyam-graph.json', true);
+    this.close();
+  },
+};
+
+/* =====================================================================
+   11. Wiring: every listener below is attached once at start-up
+   ===================================================================== */
+function bindUI() {
+  // Buttons marked data-action
+  document.addEventListener('click', (event) => {
+    const target = event.target.closest('[data-action]');
+    if (!target) return;
+    const group = target.dataset.group;
+    switch (target.dataset.action) {
+      case 'open-import': Importer.open(); break;
+      case 'close-import': Importer.close(); break;
+      case 'load-sample': Importer.loadSample(); break;
+      case 'zoom-in': Viz.zoom(1.3); break;
+      case 'zoom-out': Viz.zoom(1 / 1.3); break;
+      case 'fit': Viz.fit(); break;
+      case 'reset-view': Selection.clear(); Search.apply(''); $('#search-top').value = ''; $('#search-side').value = ''; Viz.fit(); break;
+      case 'relayout': Viz.applyLayout(true); break;
+      case 'toggle-physics': Viz.setPhysicsEnabled(!state.layout.physicsOn); break;
+      case 'filter-all':
+      case 'filter-none': {
+        const hide = target.dataset.action === 'filter-none';
+        state.hidden[group] = new Set(hide ? $$(`input[data-group="${group}"]`).map((box) => box.dataset.key) : []);
+        $$(`input[data-group="${group}"]`).forEach((box) => { box.checked = !hide; });
+        UI.renderVisible(); Viz.scheduleRefresh();
+        break;
+      }
+      default: break;
+    }
+  });
+
+  // Legend checkboxes (delegated)
+  $('#sidebar').addEventListener('change', (event) => {
+    const box = event.target;
+    if (!box.dataset || !box.dataset.group) return;
+    const set = state.hidden[box.dataset.group];
+    if (box.checked) set.delete(box.dataset.key); else set.add(box.dataset.key);
+    UI.renderVisible(); Viz.scheduleRefresh();
+  });
+
+  // Layout and display controls
+  $('#layout-mode').addEventListener('change', (e) => { state.layout.mode = e.target.value; Viz.applyLayout(true); });
+  $('#layout-spacing').addEventListener('change', (e) => { state.layout.spacing = Number(e.target.value); Viz.applyLayout(false); });
+  $('#keep-physics').addEventListener('change', (e) => {
+    state.layout.keepPhysics = e.target.checked;
+    if (e.target.checked && !state.layout.mode.startsWith('hier')) Viz.setPhysicsEnabled(true);
+  });
+  $('#label-mode').addEventListener('change', (e) => { state.display.labels = e.target.value; Viz.scheduleRefresh(); });
+  $('#node-scale').addEventListener('input', (e) => { state.display.nodeScale = Number(e.target.value); Viz.scheduleRefresh(); });
+  $('#hops').addEventListener('change', (e) => { state.hops = Number(e.target.value); Viz.scheduleRefresh(); });
+  $('#opt-arrows').addEventListener('change', (e) => { state.display.arrows = e.target.checked; Viz.scheduleRefresh(); });
+  $('#opt-curved').addEventListener('change', (e) => { state.display.curved = e.target.checked; Viz.scheduleRefresh(); });
+  $('#opt-isolated').addEventListener('change', (e) => { state.hideIsolated = e.target.checked; UI.renderVisible(); Viz.scheduleRefresh(); });
+
+  // Search boxes: the header one and the one inside the sidebar (phones) stay in sync.
+  const searchInputs = [['#search-top', '#picklist-top'], ['#search-side', '#picklist-side']];
+  for (const [inputSel, listSel] of searchInputs) {
+    const input = $(inputSel);
+    attachPicker(input, $(listSel), {
+      onType: (q) => { searchInputs.forEach(([other]) => { if ($(other) !== input) $(other).value = q; }); Search.apply(q); },
+      onPick: (node) => { $('#search-top').value = ''; $('#search-side').value = ''; Search.apply(''); Selection.select(node.id, { focus: true }); },
+    });
+  }
+
+  // Drawers (small screens)
+  $('#btn-menu').addEventListener('click', () => UI.setDrawer('sidebar', $('#app').dataset.sidebar !== 'open'));
+  $('#drawer-scrim').addEventListener('click', () => { $('#app').dataset.sidebar = 'closed'; Selection.clear(); });
+
+  // Import dialog
+  $$('.tab').forEach((tab) => tab.addEventListener('click', () => Importer.setTab(tab.dataset.tab)));
+  const dropzone = $('#dropzone'), fileInput = $('#file-input');
+  dropzone.addEventListener('click', () => fileInput.click());
+  dropzone.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); } });
+  fileInput.addEventListener('change', () => { Importer.fromFile(fileInput.files[0]); fileInput.value = ''; });
+  $('#btn-load-paste').addEventListener('click', () => Importer.load($('#paste-area').value, 'pasted.json'));
+  $('#btn-clear').addEventListener('click', () => { $('#paste-area').value = ''; Importer.error(''); $('#paste-area').focus(); });
+  $('#btn-format').addEventListener('click', () => {
+    try { $('#paste-area').value = JSON.stringify(JSON.parse($('#paste-area').value), null, 2); Importer.error(''); }
+    catch (error) { Importer.error(`Cannot format: this is not valid JSON (${error.message}).`); }
+  });
+  $('#import-modal').addEventListener('mousedown', (e) => { if (e.target === e.currentTarget) Importer.close(); });
+
+  // Drag and drop a file anywhere on the page
+  let dragDepth = 0;
+  const hasFiles = (e) => e.dataTransfer && [...e.dataTransfer.types].includes('Files');
+  window.addEventListener('dragenter', (e) => { if (hasFiles(e)) { dragDepth++; $('#drag-veil').hidden = false; } });
+  window.addEventListener('dragleave', (e) => { if (hasFiles(e) && --dragDepth <= 0) { dragDepth = 0; $('#drag-veil').hidden = true; } });
+  window.addEventListener('dragover', (e) => { if (hasFiles(e)) e.preventDefault(); });
+  window.addEventListener('drop', (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault(); dragDepth = 0; $('#drag-veil').hidden = true;
+    Importer.fromFile(e.dataTransfer.files[0]);
+  });
+
+  // Keyboard
+  document.addEventListener('keydown', (e) => {
+    const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+    if (e.key === 'Escape') {
+      if (!$('#import-modal').hidden) Importer.close();
+      else { $('#app').dataset.sidebar = 'closed'; Selection.clear(); Search.apply(''); $('#search-top').value = ''; $('#search-side').value = ''; }
+    } else if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (e.key === '/') { e.preventDefault(); (window.matchMedia('(max-width: 767px)').matches ? (UI.setDrawer('sidebar', true), $('#search-side')) : $('#search-top')).focus(); }
+      else if (e.key.toLowerCase() === 'f') Viz.fit();
+    }
+  });
+}
+
+/* =====================================================================
+   12. Start
+   ===================================================================== */
+function start() {
+  const vizOk = Viz.init();
+  const libs = { vis: typeof vis !== 'undefined', icons: !!window.lucide, tailwind: typeof window.tailwind !== 'undefined' };
+  const allLoaded = libs.vis && libs.icons && libs.tailwind;
+  $('#dot-libs').className = `dot ${allLoaded ? 'ok' : 'warn'}`;
+  $('#lbl-libs').textContent = allLoaded ? 'libraries loaded' : `missing: ${Object.keys(libs).filter((k) => !libs[k]).join(', ')}`;
+  bindUI();
+  UI.syncPhysicsButton();
+  // Open on the sample so the tool shows what it does straight away.
+  Store.setGraph(normalizeGraph(SAMPLE), 'sample-niyam-graph.json', true);
+  if (!vizOk) UI.setPhysics('idle', 'no graph library', 0);
+  refreshIcons();
+}
+// Library scripts above are synchronous, so by here they either loaded or failed.
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
+})();
+</script>
+
+</body></html>

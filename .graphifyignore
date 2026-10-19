@@ -2,3 +2,6 @@ tests/
 migrations/
 scratch/
 data/
+docs/
+README.md
+pyproject.toml
