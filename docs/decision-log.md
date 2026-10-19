@@ -172,6 +172,17 @@ Format of each entry: context, options considered, decision, trade-off.
 - **Upgrades:** The tool is installed with `uv tool` and is upgraded on purpose with `uv tool upgrade graphifyy`, then the graph is rebuilt and its node count compared. It is not upgraded automatically, because a new version can change the output format and silently break the viewer.
 - **Consequences:** Each developer must install the post-commit hook once with `pre-commit install --hook-type post-commit`. The graph is local only and is not available in CI. Community names stay as "Community N", because naming them needs an LLM key and we run without one.
 
+## D-022: Structure-aware chunking, with LangChain at the boundaries
+
+- **Status:** Accepted for version 1. The comparison with a fixed-size baseline is scheduled for Phase 5.
+- **Context:** Chunks are what we embed, retrieve and cite. Regulatory answers often sit inside tables, and every answer must cite the physical page it came from.
+- **Options:** (1) LangChain's `RecursiveCharacterTextSplitter` (size-based, works on plain strings), (2) Docling's own table-aware chunker, (3) our own chunker over parsed blocks.
+- **Decision:** Write a small chunker over `ParsedBlock` objects (`chunk_blocks`). A heading starts a new section. Text blocks are grouped up to a size limit, never cut in half. A table is always its own chunk. Each chunk carries the page where it starts and its section heading. The heading is stored in `section` and not repeated in `text`.
+- **Why:** String-based splitters cannot see the two rules the product depends on: never split a table, and keep the physical page for the citation. The chunker is about 50 lines and covered by six tests that read as a specification.
+- **LangChain's role:** `RecursiveCharacterTextSplitter` is the fixed-size baseline in the Phase 5 evaluation, and it will split any single paragraph that is larger than the size limit. Chunks become LangChain `Document` objects (text plus page and section metadata) when they leave ingestion, so embeddings, retrieval, the chat model, LangGraph and LangSmith all use LangChain's interfaces.
+- **Known limitations:** The 1200-character limit is a starting guess, not a measured value. A single paragraph over the limit currently stays whole. Table rows are not repeated with their header when a long table is split, because tables are never split at all.
+- **Consequences:** If the evaluation shows the baseline retrieves as well or better, we switch to it, because the chunker sits behind a single function.
+
 ---
 
 ## Open decisions

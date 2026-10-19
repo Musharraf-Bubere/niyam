@@ -428,7 +428,7 @@ Parsing is CPU-heavy, about 5 to 10 seconds per page, so it must not run inside 
 
 ---
 
-## Code graph and tooling discipline
+## 30. Code graph and tooling discipline
 
 **Q: How do you keep an architecture diagram from going stale?**
 I don't draw it by hand. A code graph is generated from the source with local AST parsing and rebuilt after every commit, so it cannot drift from the code. The final architecture document is written once, near the end, instead of being patched through the project.
@@ -447,6 +447,25 @@ Yes, and it didn't. The update command also indexed my docs folder and README, a
 
 **Q: Why upgrade the tool by hand and not automatically?**
 A tool upgrade can change its output format and silently break whatever reads it. I upgrade on purpose, rebuild, and compare the numbers before trusting the new version.
+
+---
+
+## 31. Chunking
+
+**Q: How did you chunk the documents?**
+A heading starts a new section, text is grouped up to a size limit without cutting a block in half, and a table is always its own chunk. Each chunk keeps its page number and section heading so every answer can cite a page.
+
+**Q: Why not use LangChain's text splitter?**
+It works on plain strings, so it would cut through a regulatory table and it has already lost the page number. I use it where it fits: as the fixed-size baseline I measure against, and to split oversized paragraphs. The chunks leave ingestion as LangChain `Document` objects, so the rest of the pipeline uses the framework.
+
+**Q: How do you know your chunker is better than the default?**
+I don't yet. It is version 1, and I will compare it against the default splitter on retrieval recall using a fixed evaluation set before I claim anything.
+
+**Q: Why is the chunk size 1200 characters?**
+It is a starting guess, and I recorded it as one. I will tune it against the evaluation set.
+
+**Q: How did you test it?**
+Test-first. Six tests describe the rules: heading starts a section, blocks are not cut, a table is never merged, text before any heading has no section. I watched them fail for the right reason before writing the code.
 
 ---
 
