@@ -161,6 +161,17 @@ Format of each entry: context, options considered, decision, trade-off.
 - **Page numbers:** Citations use the physical page number counted from 1, as shown by a PDF viewer. The PDFs carry no page-label metadata and the printed numbers differ (SEBI annexures have no footer numbers).
 - **Consequences:** Large install (PyTorch). Models must be downloaded at build time, never at runtime, and the container must be tested with no network. Ingestion is slow, so it runs as a background job.
 
+## D-021: Code graph for architecture review, refreshed after each commit
+
+- **Status:** Accepted
+- **Context:** As the codebase grows, it helps to see how modules and layers connect, and to catch dependencies that cut across layers. The graph must always match the code, or people stop trusting it.
+- **Options considered:** (1) run Graphify by hand when needed, (2) Graphify's own `hook install`, (3) a hook declared in `.pre-commit-config.yaml`, (4) a CI job that publishes the graph.
+- **Decision:** Use Graphify in code-only mode (`graphify update . --force`), run as a post-commit hook declared in `.pre-commit-config.yaml`. `.graphifyignore` limits the graph to application code: tests, migrations, scratch files, data, docs, README and `pyproject.toml` are excluded. The output folder `graphify-out/` is generated and git-ignored. The viewer, `tools/graphify-explorer.html`, is committed because it is hand-written source, and it loads `graphify-out/graph.json` in the browser.
+- **Why:** The hook runs after the commit is saved, so it can never block a commit. It takes about 2 seconds and needs no API key, because AST extraction is local. Keeping it in the pre-commit config puts every git hook in one reviewed, versioned file, whereas Graphify's own installer writes four hooks directly into `.git/hooks`, where nobody can review them and they can conflict with the pre-commit framework. Option 4 was rejected for now because the graph is a development aid, not a delivery artifact.
+- **Found while testing:** `graphify update` also indexes documentation (86 nodes from `docs/` and 10 from the README) where `extract --code-only` does not. These nodes drowned the code structure, so docs are excluded in `.graphifyignore`. The command leaves the graph untouched when no code topology changed, so a passing hook does not always mean a rewrite. The hook was verified by adding a throwaway function and watching the node count go from 61 to 62.
+- **Upgrades:** The tool is installed with `uv tool` and is upgraded on purpose with `uv tool upgrade graphifyy`, then the graph is rebuilt and its node count compared. It is not upgraded automatically, because a new version can change the output format and silently break the viewer.
+- **Consequences:** Each developer must install the post-commit hook once with `pre-commit install --hook-type post-commit`. The graph is local only and is not available in CI. Community names stay as "Community N", because naming them needs an LLM key and we run without one.
+
 ---
 
 ## Open decisions
