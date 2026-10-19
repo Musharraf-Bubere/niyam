@@ -23,3 +23,10 @@ repos:
         language: system
         pass_filenames: false
         stages: [pre-push]
+      - id: graphify-refresh
+        name: refresh code graph
+        entry: graphify update . --force
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [post-commit]
