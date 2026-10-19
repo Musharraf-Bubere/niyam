@@ -1,4 +1,3 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
 <title>Graphify Explorer</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -936,9 +935,11 @@ function edgeItem(e, view) {
   const touchesSelection = view.sel && (e.from === view.sel || e.to === view.sel);
   const dim = view.pathNodes.size ? !inPath : (a.dim || b.dim);
   const inferred = e.confidence && !/^extracted$/i.test(e.confidence);
-  const color = inPath ? AMBER : touchesSelection ? rgba(CYAN, 0.9) : dim ? rgba(SLATE, 0.06) : rgba(SLATE, 0.3);
+  const color = inPath ? AMBER : touchesSelection ? rgba(CYAN, 0.9) : dim ? rgba(SLATE, 0.06) : rgba(SLATE, 0.45);
   return {
     id: e.id,
+    from: e.from,   // endpoints are required when the edge is first added to the DataSet
+    to: e.to,
     hidden: state.hidden.relation.has(e.relation) || a.hidden || b.hidden,
     width: inPath ? 3 : touchesSelection ? 1.8 : 1,
     dashes: inferred ? [5, 5] : false,
@@ -1522,5 +1523,3 @@ function start() {
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
 })();
 </script>
-
-</body></html>
