@@ -35,6 +35,9 @@ dev = [
     "pytest>=9.1.1",
     "ruff>=0.17.0",
 ]
+ingest = [
+    "docling>=2.140.0",
+]
 
 [tool.ruff]
 line-length = 100
