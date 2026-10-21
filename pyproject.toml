@@ -57,3 +57,8 @@ strict = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+
+[[tool.mypy.overrides]]
+module = ["docling.*", "docling_core.*"]
+ignore_missing_imports = true
+implicit_reexport = true
